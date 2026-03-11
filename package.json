@@ -17,6 +17,7 @@
     "node": ">=22.13.0"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.0",
     "@mastra/core": "^1.11.0",
     "@mastra/evals": "^1.1.2",
     "@mastra/libsql": "^1.7.0",
