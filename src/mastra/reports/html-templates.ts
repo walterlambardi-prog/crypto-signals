@@ -222,6 +222,14 @@ export function generateDashboardHtml(
         <div class="number">${scanCount}</div>
         <div class="label">Market Scans</div>
       </div>
+      <a href="/workflows" class="stat-card" style="text-decoration:none;cursor:pointer;border-color:var(--accent);">
+        <div class="number" style="font-size:1.5rem;">🔄</div>
+        <div class="label" style="color:var(--accent);font-weight:600;">Run Workflows</div>
+      </a>
+      <a href="/settings" class="stat-card" style="text-decoration:none;cursor:pointer;border-color:var(--purple);">
+        <div class="number" style="font-size:1.5rem;">⚙️</div>
+        <div class="label" style="color:var(--purple);font-weight:600;">Settings</div>
+      </a>
     </div>
 
     <div class="tabs">

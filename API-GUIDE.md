@@ -1,0 +1,836 @@
+# API Guide — Crypto Signals (Mastra Server)
+
+Guía completa de casos de uso del servidor Mastra via `curl`.
+
+> **Base URL**: `http://TU_IP_PUBLICA:4111` (AWS) o `http://localhost:4111` (local)
+
+---
+
+## Tabla de Contenidos
+
+1. [Agente — Consultas](#1-agente--consultas)
+2. [Agente — Streaming](#2-agente--streaming)
+3. [Agente — Conversaciones con Memoria](#3-agente--conversaciones-con-memoria)
+4. [Workflows — Ejecución Directa](#4-workflows--ejecución-directa)
+5. [Workflows — Create Run + Start (2 pasos)](#5-workflows--create-run--start-2-pasos)
+6. [Workflows — Historial de Runs](#6-workflows--historial-de-runs)
+7. [Reports — Dashboard HTML](#7-reports--dashboard-html)
+8. [Memory — Gestión de Threads](#8-memory--gestión-de-threads)
+9. [Discovery — Listar Recursos](#9-discovery--listar-recursos)
+10. [Workflows UI — Interfaz Web](#10-workflows-ui--interfaz-web)
+11. [Settings — Configuración de Modelo](#11-settings--configuración-de-modelo)
+12. [Administración — Reset de Bases de Datos](#12-administración--reset-de-bases-de-datos)
+13. [Referencia Rápida](#13-referencia-rápida)
+
+---
+
+## 1. Agente — Consultas
+
+El agente recibe un mensaje, ejecuta tools automáticamente, y devuelve una respuesta completa.
+
+### Consulta simple (precio de un coin)
+
+```bash
+curl -s -X POST http://TU_IP_PUBLICA:4111/api/agents/crypto-signals-agent/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      { "role": "user", "content": "Precio actual de Bitcoin" }
+    ]
+  }'
+```
+
+**Respuesta** (simplificada):
+```json
+{
+  "text": "📊 **Bitcoin Analysis**\n• Precio: $70,517 | 24h: +1.44%\n• Capitalización de Mercado: $1.41T | Volumen: $47.03B",
+  "usage": { "inputTokens": 2776, "outputTokens": 72, "totalTokens": 2916 }
+}
+```
+
+### Análisis técnico completo
+
+```bash
+curl -s -X POST http://TU_IP_PUBLICA:4111/api/agents/crypto-signals-agent/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      { "role": "user", "content": "Dame un análisis técnico completo de Ethereum con señales de trading" }
+    ]
+  }'
+```
+
+### Consultar múltiples coins
+
+```bash
+curl -s -X POST http://TU_IP_PUBLICA:4111/api/agents/crypto-signals-agent/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      { "role": "user", "content": "Compara Bitcoin, Ethereum y Solana" }
+    ]
+  }'
+```
+
+### Sentimiento del mercado
+
+```bash
+curl -s -X POST http://TU_IP_PUBLICA:4111/api/agents/crypto-signals-agent/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      { "role": "user", "content": "¿Cómo está el sentimiento del mercado crypto hoy?" }
+    ]
+  }'
+```
+
+### Top coins del mercado
+
+```bash
+curl -s -X POST http://TU_IP_PUBLICA:4111/api/agents/crypto-signals-agent/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      { "role": "user", "content": "Muéstrame el top 10 de criptomonedas por market cap" }
+    ]
+  }'
+```
+
+### Extraer solo el texto de la respuesta
+
+```bash
+curl -s -X POST http://TU_IP_PUBLICA:4111/api/agents/crypto-signals-agent/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      { "role": "user", "content": "Precio de Solana" }
+    ]
+  }' | python3 -c "import sys,json; print(json.load(sys.stdin)['text'])"
+```
+
+---
+
+## 2. Agente — Streaming
+
+Recibe la respuesta token por token en tiempo real (Server-Sent Events).
+
+### Stream básico
+
+```bash
+curl -sN -X POST http://TU_IP_PUBLICA:4111/api/agents/crypto-signals-agent/stream \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      { "role": "user", "content": "Análisis rápido de Bitcoin" }
+    ]
+  }'
+```
+
+> **Nota**: Usa `-N` para desactivar el buffering y ver los chunks en tiempo real.
+
+La respuesta es un stream de eventos SSE con formato:
+```
+0: tool-call-begin ...
+9: tool-call-delta ...
+a: tool-result ...
+0: text-delta "📊"
+0: text-delta " **Bitcoin"
+...
+e: finish { ... }
+d: { ... usage ... }
+```
+
+---
+
+## 3. Agente — Conversaciones con Memoria
+
+Usa `threadId` para mantener el contexto entre mensajes y `resourceId` para identificar al usuario.
+
+### Primera pregunta en una conversación
+
+```bash
+curl -s -X POST http://TU_IP_PUBLICA:4111/api/agents/crypto-signals-agent/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      { "role": "user", "content": "Dame el precio de Bitcoin" }
+    ],
+    "threadId": "mi-sesion-001",
+    "resourceId": "usuario-1"
+  }'
+```
+
+### Seguir la conversación (mismo threadId)
+
+```bash
+curl -s -X POST http://TU_IP_PUBLICA:4111/api/agents/crypto-signals-agent/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      { "role": "user", "content": "¿Y el de Ethereum?" }
+    ],
+    "threadId": "mi-sesion-001",
+    "resourceId": "usuario-1"
+  }'
+```
+
+> El agente recuerda que estábamos hablando de precios y usará el contexto previo.
+
+### Streaming con memoria
+
+```bash
+curl -sN -X POST http://TU_IP_PUBLICA:4111/api/agents/crypto-signals-agent/stream \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      { "role": "user", "content": "Compara con Solana" }
+    ],
+    "threadId": "mi-sesion-001",
+    "resourceId": "usuario-1"
+  }'
+```
+
+---
+
+## 4. Workflows — Ejecución Directa
+
+### Análisis de un Coin (crypto-analysis-workflow)
+
+Ejecuta el pipeline completo: fetch datos → análisis técnico → generar reporte AI → guardar HTML.
+
+```bash
+curl -s -X POST "http://TU_IP_PUBLICA:4111/api/workflows/crypto-analysis-workflow/start-async" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "inputData": {
+      "coinId": "bitcoin"
+    }
+  }'
+```
+
+**Respuesta**:
+```json
+{
+  "status": "success",
+  "steps": {
+    "input": { "coinId": "bitcoin" },
+    "fetch-and-analyze": {
+      "status": "success",
+      "output": {
+        "coinId": "bitcoin",
+        "currentPrice": 70517,
+        "rsi": 52.34,
+        "overallSignal": "HOLD",
+        "signalScore": -9,
+        "signalSummary": "HOLD (score: -9/100). 2 bullish, 2 bearish, 2 neutral indicators."
+      }
+    },
+    "generate-analysis-report": {
+      "status": "success",
+      "output": { "report": "<html>...</html>" }
+    },
+    "save-html-report": {
+      "status": "success",
+      "output": {
+        "reportId": "abc123",
+        "reportUrl": "/reports/abc123"
+      }
+    }
+  }
+}
+```
+
+**Coins soportados** (CoinGecko IDs):
+| Ticker | CoinGecko ID |
+|--------|-------------|
+| BTC | `bitcoin` |
+| ETH | `ethereum` |
+| SOL | `solana` |
+| ADA | `cardano` |
+| XRP | `ripple` |
+| DOT | `polkadot` |
+| DOGE | `dogecoin` |
+| AVAX | `avalanche-2` |
+| LINK | `chainlink` |
+| BNB | `binancecoin` |
+| LTC | `litecoin` |
+| UNI | `uniswap` |
+| ATOM | `cosmos` |
+| MATIC | `matic-network` |
+
+### Scan del Mercado (market-scan-workflow)
+
+Analiza las top coins, identifica oportunidades, y genera un reporte HTML.
+
+```bash
+curl -s -X POST "http://TU_IP_PUBLICA:4111/api/workflows/market-scan-workflow/start-async" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "inputData": {
+      "limit": 10
+    }
+  }'
+```
+
+**Parámetros opcionales del market scan**:
+```json
+{
+  "inputData": {
+    "limit": 15,
+    "currency": "usd"
+  }
+}
+```
+
+### Verificar solo el status de la respuesta
+
+```bash
+curl -s -X POST "http://TU_IP_PUBLICA:4111/api/workflows/crypto-analysis-workflow/start-async" \
+  -H "Content-Type: application/json" \
+  -d '{"inputData":{"coinId":"ethereum"}}' \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print('Status:', d['status'])"
+```
+
+### Ejecutar análisis de múltiples coins (script)
+
+```bash
+for coin in bitcoin ethereum solana cardano; do
+  echo "=== Analizando $coin ==="
+  curl -s -X POST "http://TU_IP_PUBLICA:4111/api/workflows/crypto-analysis-workflow/start-async" \
+    -H "Content-Type: application/json" \
+    -d "{\"inputData\":{\"coinId\":\"$coin\"}}" \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); s=d.get('steps',{}).get('fetch-and-analyze',{}).get('output',{}); print(f\"  Signal: {s.get('overallSignal','?')} | Score: {s.get('signalScore','?')} | Price: \${s.get('currentPrice','?')}\")"
+  echo ""
+done
+```
+
+---
+
+## 5. Workflows — Create Run + Start (2 pasos)
+
+Método avanzado: crea un run primero, luego lo inicia. Útil para tracking y workflows con supervisión.
+
+### Paso 1: Crear el Run
+
+```bash
+curl -s -X POST "http://TU_IP_PUBLICA:4111/api/workflows/crypto-analysis-workflow/create-run" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+**Respuesta**:
+```json
+{
+  "runId": "50e2d8b3-1252-41ce-8e5b-6c4fecfef444"
+}
+```
+
+### Paso 2: Iniciar el Run
+
+```bash
+curl -s -X POST "http://TU_IP_PUBLICA:4111/api/workflows/crypto-analysis-workflow/start?runId=50e2d8b3-1252-41ce-8e5b-6c4fecfef444" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "inputData": {
+      "coinId": "bitcoin"
+    }
+  }'
+```
+
+**Respuesta**:
+```json
+{
+  "message": "Workflow run started"
+}
+```
+
+> **Nota**: El endpoint `/start` (sin `-async`) es fire-and-forget. El workflow se ejecuta en background. Usa el runId para consultar el resultado después.
+
+### Script completo (crear + iniciar)
+
+```bash
+RUN_ID=$(curl -s -X POST "http://TU_IP_PUBLICA:4111/api/workflows/crypto-analysis-workflow/create-run" \
+  -H "Content-Type: application/json" \
+  -d '{}' | python3 -c "import sys,json; print(json.load(sys.stdin)['runId'])")
+
+echo "Run creado: $RUN_ID"
+
+curl -s -X POST "http://TU_IP_PUBLICA:4111/api/workflows/crypto-analysis-workflow/start?runId=$RUN_ID" \
+  -H "Content-Type: application/json" \
+  -d '{"inputData":{"coinId":"bitcoin"}}'
+```
+
+---
+
+## 6. Workflows — Historial de Runs
+
+### Listar runs de un workflow
+
+```bash
+curl -s "http://TU_IP_PUBLICA:4111/api/workflows/crypto-analysis-workflow/runs" \
+  | python3 -c "
+import sys,json
+d = json.load(sys.stdin)
+for r in d.get('runs', []):
+    snap = r.get('snapshot', {})
+    print(f'runId: {r[\"runId\"][:20]}...  status: {snap.get(\"status\",\"?\")}')
+"
+```
+
+### Obtener detalle de un run específico
+
+```bash
+curl -s "http://TU_IP_PUBLICA:4111/api/workflows/crypto-analysis-workflow/runs/RUN_ID_AQUI" \
+  | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin),indent=2))"
+```
+
+### Eliminar un run
+
+```bash
+curl -s -X DELETE "http://TU_IP_PUBLICA:4111/api/workflows/crypto-analysis-workflow/runs/RUN_ID_AQUI"
+```
+
+### Cancelar un run en ejecución
+
+```bash
+curl -s -X POST "http://TU_IP_PUBLICA:4111/api/workflows/crypto-analysis-workflow/runs/RUN_ID_AQUI/cancel" \
+  -H "Content-Type: application/json"
+```
+
+---
+
+## 7. Reports — Dashboard HTML
+
+Rutas custom para gestionar reportes generados por los workflows.
+
+### Ver dashboard de reportes (navegador)
+
+```
+http://TU_IP_PUBLICA:4111/reports
+```
+
+### Dashboard filtrado
+
+```
+http://TU_IP_PUBLICA:4111/reports?filter=analysis
+http://TU_IP_PUBLICA:4111/reports?filter=scan
+```
+
+### Ver último reporte de un coin
+
+```
+http://TU_IP_PUBLICA:4111/reports/latest/bitcoin
+http://TU_IP_PUBLICA:4111/reports/latest/ethereum
+```
+
+> Redirige (302) al reporte más reciente de ese coin.
+
+### Ver un reporte específico por ID
+
+```
+http://TU_IP_PUBLICA:4111/reports/REPORT_ID
+```
+
+### Eliminar un reporte
+
+```bash
+curl -s -X DELETE "http://TU_IP_PUBLICA:4111/reports/REPORT_ID"
+```
+
+**Respuesta**:
+```json
+{
+  "success": true,
+  "deletedId": "REPORT_ID"
+}
+```
+
+### Obtener dashboard como HTML por curl
+
+```bash
+curl -s http://TU_IP_PUBLICA:4111/reports | head -20
+```
+
+---
+
+## 8. Memory — Gestión de Threads
+
+### Verificar estado de la memoria
+
+```bash
+curl -s "http://TU_IP_PUBLICA:4111/api/memory/status?agentId=crypto-signals-agent"
+```
+
+**Respuesta**:
+```json
+{ "result": true }
+```
+
+### Ver configuración de memoria
+
+```bash
+curl -s "http://TU_IP_PUBLICA:4111/api/memory/config?agentId=crypto-signals-agent" \
+  | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin),indent=2))"
+```
+
+### Listar threads (conversaciones)
+
+```bash
+curl -s "http://TU_IP_PUBLICA:4111/api/memory/threads?agentId=crypto-signals-agent" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Total: {d[\"total\"]}'); [print(f'  {t[\"id\"]}') for t in d['threads']]"
+```
+
+### Ver mensajes de un thread
+
+```bash
+curl -s "http://TU_IP_PUBLICA:4111/api/memory/threads/THREAD_ID/messages?agentId=crypto-signals-agent" \
+  | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin),indent=2))"
+```
+
+### Eliminar un thread
+
+```bash
+curl -s -X DELETE "http://TU_IP_PUBLICA:4111/api/memory/threads/THREAD_ID?agentId=crypto-signals-agent"
+```
+
+---
+
+## 9. Discovery — Listar Recursos
+
+### Listar agentes disponibles
+
+```bash
+curl -s http://TU_IP_PUBLICA:4111/api/agents \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); [print(f'{k}: {v[\"name\"]}') for k,v in d.items()]"
+```
+
+### Ver detalle de un agente
+
+```bash
+curl -s http://TU_IP_PUBLICA:4111/api/agents/crypto-signals-agent \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Name: {d[\"name\"]}'); print(f'Tools: {list(d[\"tools\"].keys())}')"
+```
+
+### Listar workflows disponibles
+
+```bash
+curl -s http://TU_IP_PUBLICA:4111/api/workflows \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); [print(f'{k}: {v[\"name\"]}') for k,v in d.items()]"
+```
+
+### Ver detalle de un workflow (steps)
+
+```bash
+curl -s http://TU_IP_PUBLICA:4111/api/workflows/crypto-analysis-workflow \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Name: {d[\"name\"]}'); [print(f'  Step: {k}') for k in d['steps']]"
+```
+
+### Listar tools registrados
+
+```bash
+curl -s http://TU_IP_PUBLICA:4111/api/tools \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); [print(f'{k}: {v[\"id\"]} — {v[\"description\"][:60]}') for k,v in d.items()]"
+```
+
+---
+
+## 10. Workflows UI — Interfaz Web
+
+En lugar de utilizar `curl`, puedes ejecutar los workflows desde una interfaz web interactiva accesible directamente en el navegador.
+
+### Acceder a la página de Workflows
+
+```
+http://TU_IP_PUBLICA:4111/workflows
+```
+
+También accesible desde el dashboard de reports haciendo click en la tarjeta **🔄 Run Workflows**.
+
+### Funcionalidades de la UI
+
+| Funcionalidad | Descripción |
+|---------------|-------------|
+| **Crypto Analysis** | Selecciona una criptomoneda del dropdown y ejecuta el análisis completo |
+| **Market Scan** | Selecciona cuántas monedas escanear (Top 5, 10, 15, 20, 25) |
+| **Resultados en vivo** | Los resultados se muestran con un timeline de pasos, estados, y duraciones |
+| **Report links** | Si el workflow genera un reporte HTML, aparece un botón directo para verlo |
+| **Historial de runs** | Tabla con los últimos 15 ejecutados, incluyendo tipo, input, estado, fecha y link al reporte |
+
+### Coins disponibles en el selector
+
+| ID (CoinGecko) | Nombre |
+|-----------------|--------|
+| `bitcoin` | Bitcoin (BTC) |
+| `ethereum` | Ethereum (ETH) |
+| `solana` | Solana (SOL) |
+| `cardano` | Cardano (ADA) |
+| `ripple` | XRP (XRP) |
+| `polkadot` | Polkadot (DOT) |
+| `dogecoin` | Dogecoin (DOGE) |
+| `avalanche-2` | Avalanche (AVAX) |
+| `chainlink` | Chainlink (LINK) |
+| `binancecoin` | BNB (BNB) |
+| `litecoin` | Litecoin (LTC) |
+| `uniswap` | Uniswap (UNI) |
+| `cosmos` | Cosmos (ATOM) |
+| `matic-network` | Polygon (MATIC) |
+
+### Navegación
+
+- **Dashboard → Workflows**: Click en tarjeta "🔄 Run Workflows" en `/reports`
+- **Workflows → Dashboard**: Click en "← Reports Dashboard" en `/workflows`
+
+---
+
+## 11. Settings — Configuración de Modelo
+
+Página interactiva para seleccionar el modelo LLM y la API key sin tocar archivos del servidor.
+
+### Página de Settings
+
+Navegar a `/settings` en el browser.
+
+**Proveedores soportados:**
+
+| Provider | Modelos |
+|----------|--------|
+| Google Gemini | gemini-2.5-flash, gemini-2.5-pro, gemini-2.0-flash |
+| OpenAI | gpt-4o, gpt-4o-mini, gpt-4.1, gpt-4.1-mini, gpt-4.1-nano, o4-mini |
+| Anthropic | claude-sonnet-4-5, claude-haiku-3.5 |
+
+### Arquitectura de seguridad
+
+- La API key se guarda **solo en localStorage** del browser (nunca en disco del servidor)
+- Al cargar cualquier página (Settings, Workflows), el browser sincroniza la config a **memoria del servidor**
+- Si el servidor se reinicia, la memoria se pierde → el browser re-envía desde localStorage en la próxima visita
+- El default usa la variable `GOOGLE_GENERATIVE_AI_API_KEY` del `.env` del servidor
+
+### API Endpoints
+
+#### Obtener config actual
+
+```bash
+curl -s $BASE/model-config
+```
+
+Respuesta (API key siempre enmascarada):
+```json
+{"provider":"google","modelName":"gemini-2.5-flash","apiKeyHint":"AIza••••10LU"}
+```
+
+#### Guardar config (en memoria del server)
+
+```bash
+curl -s -X POST $BASE/model-config \
+  -H "Content-Type: application/json" \
+  -d '{"provider":"openai","modelName":"gpt-4o","apiKey":"sk-your-key-here"}'
+```
+
+#### Testear conexión
+
+```bash
+# Con API key custom
+curl -s -X POST $BASE/model-config/test \
+  -H "Content-Type: application/json" \
+  -d '{"provider":"google","modelName":"gemini-2.5-flash","apiKey":"your-key"}'
+
+# Sin API key (usa default del server .env)
+curl -s -X POST $BASE/model-config/test \
+  -H "Content-Type: application/json" \
+  -d '{"provider":"google","modelName":"gemini-2.5-flash","apiKey":""}'
+```
+
+#### Reset a defaults
+
+```bash
+curl -s -X POST $BASE/model-config/reset
+```
+
+Limpia la config en memoria. Vuelve a usar la API key del `.env`.
+
+---
+
+## 12. Administración — Reset de Bases de Datos
+
+El servidor utiliza dos bases de datos LibSQL:
+
+| Base de Datos | Ubicación | Contenido |
+|---------------|-----------|----------|
+| `mastra.db` | `~/crypto-signals/.mastra/output/` | Memoria del agente (threads, mensajes, working memory, workflow runs) |
+| `mastra-reports.db` | `~/crypto-signals/` | Reportes HTML generados por los workflows |
+
+> **Nota**: `mastra.db` está dentro de `.mastra/output/` pero `mastra-reports.db` está en la raíz del proyecto (CWD del proceso PM2).
+
+### Resetear todo (ambas bases de datos)
+
+```bash
+ssh -i ~/.ssh/crypto-signals-key.pem ec2-user@TU_IP_PUBLICA \
+  'rm -f ~/crypto-signals/.mastra/output/mastra.db* ~/crypto-signals/mastra-reports.db && pm2 restart crypto-signals'
+```
+
+### Resetear solo reportes
+
+```bash
+ssh -i ~/.ssh/crypto-signals-key.pem ec2-user@TU_IP_PUBLICA \
+  'rm -f ~/crypto-signals/mastra-reports.db && pm2 restart crypto-signals'
+```
+
+### Resetear solo memoria del agente
+
+Elimina threads, mensajes y working memory. Los reportes HTML se mantienen.
+
+```bash
+ssh -i ~/.ssh/crypto-signals-key.pem ec2-user@TU_IP_PUBLICA \
+  'rm -f ~/crypto-signals/.mastra/output/mastra.db* && pm2 restart crypto-signals'
+```
+
+### Resetear base de datos local
+
+```bash
+cd /ruta/a/tu/proyecto
+rm -f .mastra/output/mastra.db* mastra-reports.db
+# Reiniciar el servidor de desarrollo
+```
+
+> **Nota**: Las bases de datos se recrean automáticamente vacías al reiniciar el servidor (PM2 o dev).
+
+### Borrar Workflow Runs (historial de ejecuciones)
+
+Los workflow runs se eliminan individualmente via la API REST, sin necesidad de borrar bases de datos.
+
+**Borrar todos los runs de ambos workflows:**
+
+```bash
+# Borrar runs de crypto-analysis
+curl -s http://TU_IP_PUBLICA:4111/api/workflows/crypto-analysis-workflow/runs \
+  | python3 -c "import sys,json; [print(r['runId']) for r in json.load(sys.stdin).get('runs',[])]" \
+  | xargs -I{} curl -s -X DELETE http://TU_IP_PUBLICA:4111/api/workflows/crypto-analysis-workflow/runs/{}
+
+# Borrar runs de market-scan
+curl -s http://TU_IP_PUBLICA:4111/api/workflows/market-scan-workflow/runs \
+  | python3 -c "import sys,json; [print(r['runId']) for r in json.load(sys.stdin).get('runs',[])]" \
+  | xargs -I{} curl -s -X DELETE http://TU_IP_PUBLICA:4111/api/workflows/market-scan-workflow/runs/{}
+```
+
+**Borrar un run específico:**
+
+```bash
+curl -s -X DELETE http://TU_IP_PUBLICA:4111/api/workflows/crypto-analysis-workflow/runs/RUN_ID_AQUI
+```
+
+**Listar runIds para revisión:**
+
+```bash
+curl -s http://TU_IP_PUBLICA:4111/api/workflows/crypto-analysis-workflow/runs \
+  | python3 -c "import sys,json; [print(r['runId']) for r in json.load(sys.stdin).get('runs',[])]"
+```
+
+> **Nota**: Esto limpia la tabla "Recent Workflow Runs" en la UI de `/workflows` sin afectar reportes ni memoria del agente.
+
+### Verificar que el reset fue exitoso
+
+```bash
+# Verificar reportes (debería devolver lista vacía)
+curl -s http://TU_IP_PUBLICA:4111/reports | grep -c "report-card"
+
+# Verificar threads (debería devolver total: 0)
+curl -s "http://TU_IP_PUBLICA:4111/api/memory/threads?agentId=crypto-signals-agent" \
+  | python3 -c "import sys,json; print('Threads:', json.load(sys.stdin).get('total', 0))"
+
+# Verificar workflow runs (debería devolver lista vacía)
+curl -s http://TU_IP_PUBLICA:4111/api/workflows/crypto-analysis-workflow/runs \
+  | python3 -c "import sys,json; print('Analysis runs:', len(json.load(sys.stdin).get('runs',[])))"
+```
+
+---
+
+## 13. Referencia Rápida
+
+### Endpoints del Agente
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| `GET` | `/api/agents` | Listar agentes |
+| `GET` | `/api/agents/:agentId` | Detalle de agente |
+| `POST` | `/api/agents/:agentId/generate` | Consulta (respuesta completa) |
+| `POST` | `/api/agents/:agentId/stream` | Consulta con streaming (SSE) |
+
+### Endpoints de Workflows
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| `GET` | `/api/workflows` | Listar workflows |
+| `GET` | `/api/workflows/:name` | Detalle de workflow |
+| `POST` | `/api/workflows/:name/start-async` | **Ejecutar workflow** (respuesta completa) |
+| `POST` | `/api/workflows/:name/create-run` | Crear un run (devuelve runId) |
+| `POST` | `/api/workflows/:name/start?runId=X` | Iniciar un run existente (fire-and-forget) |
+| `POST` | `/api/workflows/:name/stream?runId=X` | Ejecutar workflow con streaming |
+| `GET` | `/api/workflows/:name/runs` | Listar runs del workflow |
+| `GET` | `/api/workflows/:name/runs/:runId` | Detalle de un run |
+| `DELETE` | `/api/workflows/:name/runs/:runId` | Eliminar un run |
+| `POST` | `/api/workflows/:name/runs/:runId/cancel` | Cancelar run en ejecución |
+| `POST` | `/api/workflows/:name/resume?runId=X` | Reanudar workflow suspendido |
+
+### Endpoints de Reports & Workflows UI (Custom)
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| `GET` | `/reports` | Dashboard HTML de todos los reportes |
+| `GET` | `/reports?filter=analysis` | Dashboard filtrado (analysis/scan) |
+| `GET` | `/reports/latest/:coinId` | Redirect al último reporte de un coin |
+| `GET` | `/reports/:id` | Ver reporte individual (HTML) |
+| `DELETE` | `/reports/:id` | Eliminar un reporte |
+| `GET` | `/workflows` | Interfaz web interactiva para ejecutar workflows |
+| `GET` | `/settings` | Página de configuración de modelo LLM |
+| `GET` | `/model-config` | Config actual del modelo (API key enmascarada) |
+| `POST` | `/model-config` | Guardar config de modelo (en memoria del server) |
+| `POST` | `/model-config/test` | Testear conexión al modelo |
+| `POST` | `/model-config/reset` | Reset a config default (env var) |
+
+### Endpoints de Memory
+
+| Método | Endpoint | Query Params | Descripción |
+|--------|----------|-------------|-------------|
+| `GET` | `/api/memory/status` | `agentId` | Estado de la memoria |
+| `GET` | `/api/memory/config` | `agentId` | Configuración de memoria |
+| `GET` | `/api/memory/threads` | `agentId` | Listar threads |
+| `GET` | `/api/memory/threads/:id` | `agentId` | Detalle de un thread |
+| `GET` | `/api/memory/threads/:id/messages` | `agentId` | Mensajes del thread |
+| `GET` | `/api/memory/threads/:id/working-memory` | `agentId` | Working memory del thread |
+| `POST` | `/api/memory/threads` | — | Crear thread |
+| `DELETE` | `/api/memory/threads/:id` | `agentId` | Eliminar thread |
+
+### Endpoints de Discovery
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| `GET` | `/api/agents` | Listar agentes |
+| `GET` | `/api/workflows` | Listar workflows |
+| `GET` | `/api/tools` | Listar tools |
+
+---
+
+## Workflow Names
+
+Los workflows se identifican por su **name** (no por la key de código):
+
+| Key en código | Name en API | Input |
+|--------------|-------------|-------|
+| `cryptoAnalysisWorkflow` | `crypto-analysis-workflow` | `{ "coinId": "bitcoin" }` |
+| `marketScanWorkflow` | `market-scan-workflow` | `{ "limit": 10 }` |
+
+---
+
+## Notas Importantes
+
+1. **start-async vs start**: Usa `/start-async` para ejecutar un workflow y esperar el resultado completo. Usa `/create-run` + `/start` para ejecución en background con tracking.
+
+2. **Memoria**: Para que el agente recuerde conversaciones previas, siempre envía `threadId` y `resourceId` consistentes.
+
+3. **Rate limits**: El modelo Gemini tiene límites en la API gratuita. Si recibes errores de cuota, espera unos minutos.
+
+4. **CoinGecko IDs**: Los workflows y tools usan IDs de CoinGecko (ej: `bitcoin`, no `BTC`). Ver tabla de mapeos arriba.
+
+5. **Reports son persistentes**: Los reportes generados por workflows se guardan en LibSQL y sobreviven reinicios del servidor.
+
+6. **Timeout**: Los workflows pueden tardar 30-60 segundos en completarse ya que involucran llamadas a APIs externas + generación LLM. Usa `-m 120` en curl para un timeout de 2 minutos.

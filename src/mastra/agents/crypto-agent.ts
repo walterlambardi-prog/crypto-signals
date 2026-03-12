@@ -4,6 +4,7 @@ import { getCryptoPrice } from '../tools/crypto-price';
 import { getMarketOverview } from '../tools/crypto-market';
 import { getTechnicalAnalysis } from '../tools/technical-analysis';
 import { getMarketSentiment } from '../tools/crypto-sentiment';
+import { getModelForAgent } from '../reports/model-config';
 
 export const cryptoSignalsAgent = new Agent({
   id: 'crypto-signals-agent',
@@ -67,7 +68,7 @@ For market overview, provide a clean table or ranked list.
 - Express market caps and volumes in readable format (e.g., $1.2T, $450B, $3.5M).
 - Respond in the same language the user uses.
 `,
-  model: 'google/gemini-2.5-flash',
+  model: () => getModelForAgent() as any,
   tools: {
     getCryptoPrice,
     getMarketOverview,
