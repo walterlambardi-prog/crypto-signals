@@ -52,7 +52,12 @@ curl -s -X POST $BASE/workflows/execute/analysis \
           "coinId": "bitcoin",
           "currentPrice": 70517,
           "overallSignal": "HOLD",
-          "signalScore": -9
+          "signalScore": -9,
+          "indicatorBreakdown": "RSI: NEUTRAL (+5) | SMA (20): BULLISH (+15) | ...",
+          "volumeRatio": 1.23,
+          "ema12": 70100,
+          "ema26": 69800,
+          "athChangePercentage": -3.5
         }
       },
       "save-html-report": {

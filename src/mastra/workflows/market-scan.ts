@@ -169,15 +169,28 @@ ${inputData.topMovers
   )
   .join('\n')}
 
-Please provide:
-1. **Market Mood Assessment** — Overall direction and sentiment analysis
-2. **Top 3 Opportunities** — Coins worth watching with reasoning
-3. **Coins to Avoid** — Which ones look risky right now and why
-4. **Sector Trends** — Any notable patterns (L1s, DeFi, memes, etc.)
-5. **Actionable Recommendations** — What to do today based on this data
-6. **Risk Factors** — Key risks to monitor
+Provide your analysis in this EXACT structure:
 
-Use structured formatting. Include disclaimer about not being financial advice.`;
+## 🎯 Market Verdict
+State ONE clear direction: BULLISH, BEARISH, or NEUTRAL with confidence level (1-10). Justify in 2 sentences.
+
+## 🟢 Top 3 BUY Opportunities
+For each: coin name, WHY now (catalyst + technical reason), suggested entry zone, target price (with %), and stop-loss level.
+
+## 🔴 Top 3 to AVOID or SELL
+For each: coin name, specific red flags, what price level confirms further downside.
+
+## 📊 Sector Analysis
+| Sector | Trend | Key Movers | Outlook |
+Rate each sector: L1s, DeFi, Memes, L2s, AI tokens. Use a table.
+
+## ⚡ Immediate Action Plan
+Be SPECIFIC: What would a trader DO today with this data? Include exact actions (buy X at $Y, sell Z if below $W).
+
+## 🛡️ Risk Radar
+Top 3 risks that could invalidate the above analysis. Include what to watch and at what level things change.
+
+⚠️ This is AI-generated analysis, not financial advice. Always DYOR.`;
 
     const response = await agent.stream([{ role: 'user', content: prompt }]);
     let report = '';

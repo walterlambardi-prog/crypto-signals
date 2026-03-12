@@ -8,14 +8,14 @@
 
 ## What It Does
 
-Crypto Signals is a Mastra-based platform that provides AI-powered cryptocurrency analysis, technical indicators, and market scanning. It uses real-time data from CoinGecko and the Fear & Greed Index, combined with LLM-generated reports.
+Crypto Signals is a Mastra-based platform that provides AI-powered cryptocurrency analysis with a 10-indicator scoring engine, volume analysis, and market scanning. It uses real-time data from CoinGecko (prices, volumes, ATH) and the Fear & Greed Index, combined with aggressive LLM-generated reports that include specific entry/exit zones, stop-loss levels, and risk/reward ratios.
 
 ### Features
 
-- **Crypto Analysis Workflow** — Full technical analysis (RSI, SMA, EMA, MACD, Bollinger) + AI-generated report for any coin
-- **Market Scan Workflow** — Scans top N coins, identifies opportunities and risks
+- **Crypto Analysis Workflow** — 10-indicator scoring system (RSI, SMA 20/50/200, EMA 12/26, MACD, Bollinger, Fear & Greed, Momentum, SMA Crossover, Volume Profile) with AI-generated reports including entry/exit zones, stop-loss, and risk/reward
+- **Market Scan Workflow** — Scans top N coins with aggressive opportunity identification: BUY/SELL targets with entry/target/SL, sector analysis, and immediate action plans
 - **Interactive Agent** — Chat-based crypto assistant with memory (remembers conversations)
-- **HTML Reports Dashboard** — Dark-themed reports with filters, auto-generated from workflows
+- **HTML Reports Dashboard** — Dark-themed reports with table rendering, signal badges (BUY/SELL/HOLD highlighted), keyword coloring (BULLISH/BEARISH/OVERSOLD/OVERBOUGHT), and responsive filters
 - **Workflows UI** — Web interface to execute workflows without curl
 - **Settings UI** — Configure LLM provider, model, and API key from the browser
 - **9 LLM Providers** — Google, OpenAI, Anthropic, Groq, xAI, Mistral, DeepSeek, Perplexity, Cohere
@@ -153,7 +153,7 @@ ssh -i ~/.ssh/crypto-signals-key.pem ec2-user@TU_IP_PUBLICA \
 | Database | LibSQL (reports + agent memory) |
 | Server | Hono (via Mastra) |
 | Hosting | AWS EC2 (t3.micro) |
-| HTTPS | Nginx + Let's Encrypt + DuckDNS |
+| `HTTPS` | Caddy + Let's Encrypt + DuckDNS |
 | Process Manager | PM2 |
 
 ---

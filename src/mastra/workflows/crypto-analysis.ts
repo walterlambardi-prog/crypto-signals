@@ -26,6 +26,11 @@ const coinDataSchema = z.object({
   macdHistogram: z.number().nullable(),
   bollingerUpper: z.number().nullable(),
   bollingerLower: z.number().nullable(),
+  ema12: z.number().nullable(),
+  ema26: z.number().nullable(),
+  volumeRatio: z.number().nullable(),
+  athChangePercentage: z.number().nullable(),
+  indicatorBreakdown: z.string(),
   supportLevel: z.number(),
   resistanceLevel: z.number(),
   fearGreedIndex: z.number(),
@@ -163,15 +168,71 @@ function scoreBollinger(
   return { name: 'Bollinger Bands', signal, score, weight: 1.5 };
 }
 
+function scoreFearGreed(fgIndex: number): IndicatorResult {
+  // Contrarian: extreme fear = buying opportunity, extreme greed = caution (Buffett principle)
+  let signal: SignalDirection = 'NEUTRAL';
+  let score = 0;
+  if (fgIndex <= 15) { signal = 'BULLISH'; score = 70; }
+  else if (fgIndex <= 25) { signal = 'BULLISH'; score = 45; }
+  else if (fgIndex <= 35) { signal = 'BULLISH'; score = 20; }
+  else if (fgIndex >= 85) { signal = 'BEARISH'; score = -70; }
+  else if (fgIndex >= 75) { signal = 'BEARISH'; score = -45; }
+  else if (fgIndex >= 65) { signal = 'BEARISH'; score = -20; }
+  return { name: 'Fear & Greed (Contrarian)', signal, score, weight: 1.5 };
+}
+
+function scoreMomentum(priceChangePct24h: number): IndicatorResult {
+  let signal: SignalDirection = 'NEUTRAL';
+  let score = 0;
+  if (priceChangePct24h >= 8) { signal = 'BULLISH'; score = 55; }
+  else if (priceChangePct24h >= 4) { signal = 'BULLISH'; score = 35; }
+  else if (priceChangePct24h >= 1.5) { signal = 'BULLISH'; score = 15; }
+  else if (priceChangePct24h <= -8) { signal = 'BEARISH'; score = -55; }
+  else if (priceChangePct24h <= -4) { signal = 'BEARISH'; score = -35; }
+  else if (priceChangePct24h <= -1.5) { signal = 'BEARISH'; score = -15; }
+  return { name: 'Momentum (24h)', signal, score, weight: 1.5 };
+}
+
+function scoreSMACrossover(sma50: number, sma200: number): IndicatorResult {
+  const isBullish = sma50 > sma200;
+  const diff = Math.abs((sma50 - sma200) / sma200) * 100;
+  const magnitude = diff > 5 ? 60 : diff > 2 ? 40 : 25;
+  return {
+    name: 'SMA Cross (50/200)',
+    signal: isBullish ? 'BULLISH' : 'BEARISH',
+    score: isBullish ? magnitude : -magnitude,
+    weight: 2,
+  };
+}
+
+function scoreVolumeProfile(volumeRatio: number): IndicatorResult {
+  let signal: SignalDirection = 'NEUTRAL';
+  let score = 0;
+  if (volumeRatio >= 2) { score = 35; signal = 'BULLISH'; }
+  else if (volumeRatio >= 1.3) { score = 15; signal = 'BULLISH'; }
+  else if (volumeRatio <= 0.4) { score = -20; signal = 'BEARISH'; }
+  else if (volumeRatio <= 0.6) { score = -10; signal = 'BEARISH'; }
+  return { name: 'Volume Profile', signal, score, weight: 1 };
+}
+
+interface OverallSignalParams {
+  currentPrice: number;
+  rsi: number | null;
+  sma20: number | null;
+  sma50: number | null;
+  sma200: number | null;
+  macdHistogram: number | null;
+  bollinger: { upper: number; middle: number; lower: number } | null;
+  fearGreedIndex: number;
+  priceChangePercentage24h: number;
+  volumeRatio: number | null;
+}
+
 function computeOverallSignal(
-  currentPrice: number,
-  rsi: number | null,
-  sma20: number | null,
-  sma50: number | null,
-  sma200: number | null,
-  macdHistogram: number | null,
-  bollinger: { upper: number; middle: number; lower: number } | null,
-): { overallSignal: string; signalScore: number; signalSummary: string } {
+  params: OverallSignalParams,
+): { overallSignal: string; signalScore: number; signalSummary: string; indicatorBreakdown: string } {
+  const { currentPrice, rsi, sma20, sma50, sma200, macdHistogram, bollinger,
+    fearGreedIndex, priceChangePercentage24h, volumeRatio } = params;
   const results: IndicatorResult[] = [];
 
   if (rsi !== null) results.push(scoreRSI(rsi));
@@ -180,6 +241,9 @@ function computeOverallSignal(
   if (sma200 !== null) results.push(scoreSMA('SMA (200)', currentPrice, sma200, 2));
   if (macdHistogram !== null) results.push(scoreMACDHistogram(macdHistogram));
   if (bollinger !== null) results.push(scoreBollinger(currentPrice, bollinger));
+  results.push(scoreFearGreed(fearGreedIndex), scoreMomentum(priceChangePercentage24h));
+  if (sma50 !== null && sma200 !== null) results.push(scoreSMACrossover(sma50, sma200));
+  if (volumeRatio !== null) results.push(scoreVolumeProfile(volumeRatio));
 
   const totalWeight = results.reduce((sum, r) => sum + r.weight, 0);
   const raw = totalWeight > 0
@@ -188,18 +252,19 @@ function computeOverallSignal(
   const score = Math.max(-100, Math.min(100, Math.round(raw)));
 
   let signal: string;
-  if (score >= 50) signal = 'STRONG_BUY';
-  else if (score >= 20) signal = 'BUY';
-  else if (score > -20) signal = 'HOLD';
-  else if (score > -50) signal = 'SELL';
+  if (score >= 40) signal = 'STRONG_BUY';
+  else if (score >= 15) signal = 'BUY';
+  else if (score > -15) signal = 'HOLD';
+  else if (score > -40) signal = 'SELL';
   else signal = 'STRONG_SELL';
 
   const bullish = results.filter((r) => r.signal === 'BULLISH').length;
   const bearish = results.filter((r) => r.signal === 'BEARISH').length;
   const neutral = results.filter((r) => r.signal === 'NEUTRAL').length;
-  const summary = `${signal} (score: ${score}/100). ${bullish} bullish, ${bearish} bearish, ${neutral} neutral indicators.`;
+  const breakdown = results.map(r => `${r.name}: ${r.signal} (${r.score > 0 ? '+' : ''}${r.score})`).join(' | ');
+  const summary = `${signal} (score: ${score}/100). ${bullish} bullish, ${bearish} bearish, ${neutral} neutral of ${results.length} indicators.`;
 
-  return { overallSignal: signal, signalScore: score, signalSummary: summary };
+  return { overallSignal: signal, signalScore: score, signalSummary: summary, indicatorBreakdown: breakdown };
 }
 
 // ─── Step 1: Fetch Data + Compute TA ─────────────────────────────────
@@ -230,13 +295,22 @@ const fetchAndAnalyze = createStep({
     if (!historyRes.ok) throw new Error(`CoinGecko history error: ${historyRes.status}`);
 
     const marketData = (await marketRes.json()) as any[];
-    const historyData = (await historyRes.json()) as { prices: [number, number][] };
+    const historyData = (await historyRes.json()) as { prices: [number, number][]; total_volumes: [number, number][] };
 
     if (!marketData[0]) throw new Error(`Coin "${inputData.coinId}" not found`);
 
     const coin = marketData[0];
     const closingPrices = historyData.prices.map(([, p]: [number, number]) => p);
     const recentPrices = closingPrices.slice(-30);
+
+    // Volume analysis
+    const volumes = historyData.total_volumes?.map(([, v]: [number, number]) => v) ?? [];
+    const avgVolume30d = volumes.length >= 30
+      ? volumes.slice(-30).reduce((s, v) => s + v, 0) / 30
+      : null;
+    const volumeRatio = avgVolume30d && coin.total_volume > 0
+      ? Number.parseFloat((coin.total_volume / avgVolume30d).toFixed(2))
+      : null;
 
     // Fear & Greed
     let fgValue = 50;
@@ -257,16 +331,25 @@ const fetchAndAnalyze = createStep({
     const macd = calculateMACD(closingPrices);
     const boll = calculateBollinger(closingPrices);
 
-    // Compute overall signal score
-    const { overallSignal, signalScore, signalSummary } = computeOverallSignal(
-      coin.current_price,
+    // EMA for crossover analysis
+    const ema12Arr = calculateEMAArray(closingPrices, 12);
+    const ema26Arr = calculateEMAArray(closingPrices, 26);
+    const ema12 = ema12Arr ? ema12Arr.at(-1) ?? null : null;
+    const ema26 = ema26Arr ? ema26Arr.at(-1) ?? null : null;
+
+    // Compute overall signal score (includes Fear & Greed, Momentum, Volume, SMA Cross)
+    const { overallSignal, signalScore, signalSummary, indicatorBreakdown } = computeOverallSignal({
+      currentPrice: coin.current_price,
       rsi,
       sma20,
       sma50,
       sma200,
-      macd?.histogram ?? null,
-      boll,
-    );
+      macdHistogram: macd?.histogram ?? null,
+      bollinger: boll,
+      fearGreedIndex: fgValue,
+      priceChangePercentage24h: coin.price_change_percentage_24h || 0,
+      volumeRatio,
+    });
 
     return {
       coinId: coin.id,
@@ -286,6 +369,11 @@ const fetchAndAnalyze = createStep({
       macdHistogram: macd?.histogram === undefined ? null : Number.parseFloat(macd.histogram.toFixed(2)),
       bollingerUpper: boll?.upper === undefined ? null : Number.parseFloat(boll.upper.toFixed(2)),
       bollingerLower: boll?.lower === undefined ? null : Number.parseFloat(boll.lower.toFixed(2)),
+      ema12: ema12 === null ? null : Number.parseFloat(ema12.toFixed(2)),
+      ema26: ema26 === null ? null : Number.parseFloat(ema26.toFixed(2)),
+      volumeRatio,
+      athChangePercentage: coin.ath_change_percentage ?? null,
+      indicatorBreakdown,
       supportLevel: Number.parseFloat(Math.min(...recentPrices).toFixed(2)),
       resistanceLevel: Number.parseFloat(Math.max(...recentPrices).toFixed(2)),
       fearGreedIndex: fgValue,
@@ -312,43 +400,68 @@ const generateReport = createStep({
     const agent = mastra?.getAgent('cryptoSignalsAgent');
     if (!agent) throw new Error('Crypto signals agent not found');
 
-    const prompt = `Generate a comprehensive trading analysis report based on the following data. DO NOT call any tools — all data is provided below.
+    const prompt = `You are an aggressive crypto trading analyst. Analyze the following data and give CLEAR, DIRECT, and ACTIONABLE trading advice. Do NOT be vague or wishy-washy. Take a STRONG position. DO NOT call any tools — all data is provided below.
 
 **${inputData.name} (${inputData.symbol})**
 
-📊 Market Data:
-• Current Price: $${inputData.currentPrice}
-• 24h Change: ${inputData.priceChangePercentage24h > 0 ? '+' : ''}${inputData.priceChangePercentage24h.toFixed(2)}% ($${inputData.priceChange24h.toFixed(2)})
-• 24h High/Low: $${inputData.high24h} / $${inputData.low24h}
-• Market Cap: $${(inputData.marketCap / 1e9).toFixed(2)}B
-• 24h Volume: $${(inputData.volume24h / 1e9).toFixed(2)}B
+📊 MARKET DATA:
+• Price: $${inputData.currentPrice} | 24h: ${inputData.priceChangePercentage24h > 0 ? '+' : ''}${inputData.priceChangePercentage24h.toFixed(2)}% ($${inputData.priceChange24h.toFixed(2)})
+• 24h Range: $${inputData.low24h} — $${inputData.high24h}
+• Market Cap: $${(inputData.marketCap / 1e9).toFixed(2)}B | Volume: $${(inputData.volume24h / 1e9).toFixed(2)}B
+${inputData.volumeRatio !== null ? `• Volume Ratio (vs 30d avg): ${inputData.volumeRatio}x ${inputData.volumeRatio >= 1.5 ? '🔥 HIGH VOLUME' : inputData.volumeRatio <= 0.5 ? '⚠️ LOW VOLUME' : ''}` : ''}
+${inputData.athChangePercentage !== null ? `• Distance from ATH: ${inputData.athChangePercentage.toFixed(1)}%` : ''}
 
-📈 Technical Indicators:
-• RSI (14): ${inputData.rsi ?? 'N/A'}
-• SMA 20: ${inputData.sma20 === null ? 'N/A' : '$' + inputData.sma20}
-• SMA 50: ${inputData.sma50 === null ? 'N/A' : '$' + inputData.sma50}
-• SMA 200: ${inputData.sma200 === null ? 'N/A' : '$' + inputData.sma200}
-• MACD Histogram: ${inputData.macdHistogram ?? 'N/A'}
-• Bollinger Bands: Upper $${inputData.bollingerUpper ?? 'N/A'} / Lower $${inputData.bollingerLower ?? 'N/A'}
+📈 TECHNICAL INDICATORS:
+• RSI (14): ${inputData.rsi ?? 'N/A'} ${inputData.rsi !== null ? (inputData.rsi < 30 ? '⚠️ OVERSOLD Zone' : inputData.rsi > 70 ? '⚠️ OVERBOUGHT Zone' : '') : ''}
+• EMA 12: ${inputData.ema12 === null ? 'N/A' : '$' + inputData.ema12} | EMA 26: ${inputData.ema26 === null ? 'N/A' : '$' + inputData.ema26} ${inputData.ema12 !== null && inputData.ema26 !== null ? (inputData.ema12 > inputData.ema26 ? '🟢 Bullish Cross' : '🔴 Bearish Cross') : ''}
+• SMA 20: ${inputData.sma20 === null ? 'N/A' : '$' + inputData.sma20} ${inputData.sma20 !== null ? (inputData.currentPrice > inputData.sma20 ? '🟢 Above' : '🔴 Below') : ''}
+• SMA 50: ${inputData.sma50 === null ? 'N/A' : '$' + inputData.sma50} ${inputData.sma50 !== null ? (inputData.currentPrice > inputData.sma50 ? '🟢 Above' : '🔴 Below') : ''}
+• SMA 200: ${inputData.sma200 === null ? 'N/A' : '$' + inputData.sma200} ${inputData.sma200 !== null ? (inputData.currentPrice > inputData.sma200 ? '🟢 Above' : '🔴 Below') : ''}
+${inputData.sma50 !== null && inputData.sma200 !== null ? `• SMA Cross: ${inputData.sma50 > inputData.sma200 ? '🟢 GOLDEN CROSS (50 > 200) — Bullish' : '🔴 DEATH CROSS (50 < 200) — Bearish'}` : ''}
+• MACD Histogram: ${inputData.macdHistogram ?? 'N/A'} ${inputData.macdHistogram !== null ? (inputData.macdHistogram > 0 ? '🟢 Bullish momentum' : '🔴 Bearish momentum') : ''}
+• Bollinger: Upper $${inputData.bollingerUpper ?? 'N/A'} / Lower $${inputData.bollingerLower ?? 'N/A'}
 • Support: $${inputData.supportLevel} | Resistance: $${inputData.resistanceLevel}
 
-🧠 Market Sentiment:
-• Fear & Greed Index: ${inputData.fearGreedIndex}/100 (${inputData.fearGreedLabel})
+🧠 SENTIMENT:
+• Fear & Greed: ${inputData.fearGreedIndex}/100 (${inputData.fearGreedLabel}) ${inputData.fearGreedIndex <= 25 ? '→ Contrarian BUY signal (extreme fear = opportunity)' : inputData.fearGreedIndex >= 75 ? '→ Contrarian SELL signal (extreme greed = caution)' : ''}
 
-🎯 Quantitative Signal (computed from indicators):
-• Overall Signal: ${inputData.overallSignal}
-• Signal Score: ${inputData.signalScore}/100
+🎯 QUANTITATIVE SIGNAL (${inputData.signalScore >= 0 ? '+' : ''}${inputData.signalScore}/100):
+• Signal: **${inputData.overallSignal}** | Score: **${inputData.signalScore}/100**
+• Indicator Breakdown: ${inputData.indicatorBreakdown}
 • Summary: ${inputData.signalSummary}
 
-Please provide:
-1. Your assessment of the computed signal (${inputData.overallSignal}, score ${inputData.signalScore}/100) — do you agree? Explain why or why not
-2. Detailed analysis of each indicator and what it means
-3. Key support and resistance levels
-4. Risk assessment
-5. Short-term (1-7 days) and medium-term (1-4 weeks) outlook
-6. Actionable recommendations
+---
 
-Use structured formatting with emojis and clear sections. Include a disclaimer.`;
+Generate a POWERFUL, DECISIVE analysis with these EXACT sections:
+
+## 🎯 TRADING SIGNAL: [STRONG_BUY/BUY/HOLD/SELL/STRONG_SELL]
+State your verdict clearly and boldly. Do you agree with the quantitative signal (${inputData.overallSignal}, ${inputData.signalScore}/100)? If you disagree, explain why with specific indicator references. Confidence level (1-10).
+
+## 📊 Technical Analysis Deep Dive
+Analyze EVERY indicator. What story are they telling together? Are they aligned or diverging? Which indicators carry the most weight right now? What's the dominant trend?
+
+## 💰 Action Plan
+- **Entry Zone**: Specific price range to enter (use support/resistance data)
+- **Take Profit Target 1**: Conservative target with % gain
+- **Take Profit Target 2**: Aggressive target with % gain
+- **Stop Loss**: Specific price level with % risk from entry
+- **Risk/Reward Ratio**: Calculate it clearly
+- **Position Sizing**: Suggest conservative/moderate/aggressive based on conviction
+
+## ⏱️ Timeframe Outlook
+- **Next 24-48 hours**: Immediate price action expectation
+- **1 week outlook**: Short-term direction and key levels to watch
+- **1 month outlook**: Medium-term trend assessment
+
+## ⚠️ Key Risks
+List the top 3 specific risks for this trade RIGHT NOW. What would invalidate this signal?
+
+## 💡 Pro Tip
+One unique, actionable insight that most traders would miss about this coin right now.
+
+Be SPECIFIC with numbers. No vague language. Take a clear directional position.
+
+⚠️ *Disclaimer: This is AI-generated analysis based on technical indicators and market data. It is NOT financial advice. Always do your own research (DYOR) and never invest more than you can afford to lose. Crypto markets are highly volatile.*`;
 
     const response = await agent.stream([{ role: 'user', content: prompt }]);
     let report = '';

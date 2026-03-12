@@ -21,19 +21,32 @@ const CSS = `
   .badge-scan { background: rgba(188,140,255,0.15); color: var(--purple); }
   .meta { color: var(--muted); font-size: 0.85rem; }
   .report-body { background: var(--surface); border: 1px solid var(--border);
-    border-radius: 8px; padding: 24px; white-space: pre-wrap; word-wrap: break-word; }
+    border-radius: 8px; padding: 28px 32px; word-wrap: break-word; line-height: 1.8; }
+  .report-body p { margin: 10px 0; }
   .report-body h1, .report-body h2, .report-body h3 {
-    color: var(--accent); margin-top: 20px; margin-bottom: 8px; }
-  .report-body h1 { font-size: 1.4rem; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
-  .report-body h2 { font-size: 1.2rem; }
-  .report-body h3 { font-size: 1.05rem; color: var(--purple); }
+    color: var(--accent); margin-top: 24px; margin-bottom: 10px; }
+  .report-body h1 { font-size: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+  .report-body h2 { font-size: 1.3rem; }
+  .report-body h3 { font-size: 1.1rem; color: var(--purple); }
   .report-body strong { color: var(--text); }
-  .report-body ul, .report-body ol { padding-left: 20px; margin: 8px 0; }
-  .report-body li { margin: 4px 0; }
+  .report-body ul, .report-body ol { padding-left: 24px; margin: 12px 0; }
+  .report-body li { margin: 6px 0; line-height: 1.7; }
   .report-body code { background: rgba(110,118,129,0.2); padding: 2px 6px;
     border-radius: 4px; font-size: 0.9em; }
-  .report-body blockquote { border-left: 3px solid var(--yellow); padding-left: 12px;
-    color: var(--muted); margin: 12px 0; }
+  .report-body blockquote { border-left: 3px solid var(--yellow); padding-left: 14px;
+    color: var(--muted); margin: 14px 0; background: rgba(210,153,34,0.05);
+    padding: 10px 14px; border-radius: 0 6px 6px 0; }
+  .report-body table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.92em; }
+  .report-body th { background: var(--bg); color: var(--accent); text-align: left;
+    padding: 10px 12px; border-bottom: 2px solid var(--border); font-weight: 600; }
+  .report-body td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  .report-body tr:hover td { background: rgba(88,166,255,0.04); }
+  .report-body hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+  .signal-badge { display: inline-block; padding: 2px 10px; border-radius: 10px;
+    font-size: 0.8em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+  .signal-buy { background: rgba(63,185,80,0.15); color: var(--green); }
+  .signal-sell { background: rgba(248,81,73,0.15); color: var(--red); }
+  .signal-hold { background: rgba(210,153,34,0.15); color: var(--yellow); }
   .back-link { display: inline-block; margin-bottom: 16px; color: var(--accent);
     text-decoration: none; font-size: 0.9rem; }
   .back-link:hover { text-decoration: underline; }
@@ -70,30 +83,65 @@ const DASHBOARD_CSS = `
 // ─── Markdown-like to HTML conversion ────────────────────────────────
 
 function markdownToHtml(text: string): string {
-  let html = text
-    // Escape HTML entities first
+  // ── Pre-process pipe tables before HTML escaping ──
+  const tablePlaceholders: string[] = [];
+  let processed = text.replaceAll(
+    /(?:^|\n)((?:\|.+\|[ \t]*\n){2,})/g,
+    (_match, tableBlock: string) => {
+      const rows = tableBlock.trim().split('\n').filter((r: string) => r.trim());
+      if (rows.length < 2) return tableBlock;
+
+      // Check if row 2 is a separator (e.g., |---|---|)
+      const isSep = /^\|[\s\-:|]+\|$/.test(rows[1].trim());
+      const dataRows = isSep ? [rows[0], ...rows.slice(2)] : rows;
+      const headerRow = dataRows[0];
+      const bodyRows = dataRows.slice(1);
+
+      const parseCells = (row: string) =>
+        row.split('|').slice(1, -1).map((c: string) => c.trim());
+
+      let tableHtml = '<table><thead><tr>';
+      for (const cell of parseCells(headerRow)) {
+        tableHtml += `<th>${cell}</th>`;
+      }
+      tableHtml += '</tr></thead><tbody>';
+      for (const row of bodyRows) {
+        tableHtml += '<tr>';
+        for (const cell of parseCells(row)) {
+          tableHtml += `<td>${cell}</td>`;
+        }
+        tableHtml += '</tr>';
+      }
+      tableHtml += '</tbody></table>';
+
+      const idx = tablePlaceholders.length;
+      tablePlaceholders.push(tableHtml);
+      return `\n%%TABLE_${idx}%%\n`;
+    },
+  );
+
+  let html = processed
+    // Escape HTML entities
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
-    // Headers (### before ## before #)
+    // Headers
     .replaceAll(/^### (.+)$/gm, '<h3>$1</h3>')
     .replaceAll(/^## (.+)$/gm, '<h2>$1</h2>')
     .replaceAll(/^# (.+)$/gm, '<h1>$1</h1>')
-    // Bold
+    // Bold & italic
     .replaceAll(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    // Italic
     .replaceAll(/\*(.+?)\*/g, '<em>$1</em>')
     // Inline code
     .replaceAll(/`(.+?)`/g, '<code>$1</code>')
     // Blockquotes
     .replaceAll(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>')
-    // Unordered list items
+    // List items
     .replaceAll(/^[•\-*] (.+)$/gm, '<li>$1</li>')
-    // Numbered list items
     .replaceAll(/^\d+\. (.+)$/gm, '<li>$1</li>')
     // Horizontal rules
-    .replaceAll(/^---$/gm, '<hr style="border: none; border-top: 1px solid var(--border); margin: 16px 0;">')
-    // Line breaks
+    .replaceAll(/^---$/gm, '<hr>')
+    // Paragraphs & line breaks
     .replaceAll('\n\n', '</p><p>')
     .replaceAll('\n', '<br>');
 
@@ -101,6 +149,31 @@ function markdownToHtml(text: string): string {
   html = html.replaceAll(/((<li>.*?<\/li>(<br>)?)+)/g, '<ul>$1</ul>');
   html = html.replaceAll(/<ul>(\s*<br>)*/g, '<ul>');
   html = html.replaceAll(/(<br>)*\s*<\/ul>/g, '</ul>');
+
+  // ── Signal word highlighting ──
+  html = html.replaceAll(/\b(STRONG_BUY|STRONG BUY)\b/g,
+    '<span class="signal-badge signal-buy">STRONG BUY</span>');
+  html = html.replaceAll(/\b(STRONG_SELL|STRONG SELL)\b/g,
+    '<span class="signal-badge signal-sell">STRONG SELL</span>');
+  html = html.replaceAll(/\bBUY\b(?![^<]*<\/span>)/g,
+    '<span class="signal-badge signal-buy">BUY</span>');
+  html = html.replaceAll(/\bSELL\b(?![^<]*<\/span>)/g,
+    '<span class="signal-badge signal-sell">SELL</span>');
+  html = html.replaceAll(/\bHOLD\b/g,
+    '<span class="signal-badge signal-hold">HOLD</span>');
+  html = html.replaceAll(/\b(BULLISH)\b/g,
+    '<span style="color: var(--green); font-weight: 600;">BULLISH</span>');
+  html = html.replaceAll(/\b(BEARISH)\b/g,
+    '<span style="color: var(--red); font-weight: 600;">BEARISH</span>');
+  html = html.replaceAll(/\b(OVERSOLD)\b/g,
+    '<span style="color: var(--green); font-weight: 600;">OVERSOLD</span>');
+  html = html.replaceAll(/\b(OVERBOUGHT)\b/g,
+    '<span style="color: var(--red); font-weight: 600;">OVERBOUGHT</span>');
+
+  // ── Restore table placeholders ──
+  for (let i = 0; i < tablePlaceholders.length; i++) {
+    html = html.replace(`%%TABLE_${i}%%`, tablePlaceholders[i]);
+  }
 
   return `<p>${html}</p>`;
 }
