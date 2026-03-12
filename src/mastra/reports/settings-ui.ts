@@ -23,7 +23,7 @@ export function generateSettingsPageHtml(): string {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: var(--bg); color: var(--text); line-height: 1.6; }
-    .container { max-width: 640px; margin: 0 auto; padding: 24px 16px; }
+    .container { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
     header { border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 24px;
       display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
     header h1 { font-size: 1.5rem; }

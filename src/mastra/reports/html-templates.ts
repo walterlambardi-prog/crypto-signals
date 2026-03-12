@@ -10,7 +10,7 @@ const CSS = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background: var(--bg); color: var(--text); line-height: 1.6; }
-  .container { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
+  .container { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
   header { border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 24px;
     display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
   header h1 { font-size: 1.5rem; }
@@ -43,12 +43,12 @@ const CSS = `
 
 const DASHBOARD_CSS = `
   ${CSS}
-  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 12px; margin-bottom: 24px; }
+  .stats { display: grid; grid-template-columns: repeat(5, 1fr);
+    gap: 8px; margin-bottom: 24px; }
   .stat-card { background: var(--surface); border: 1px solid var(--border);
-    border-radius: 8px; padding: 16px; text-align: center; }
-  .stat-card .number { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
-  .stat-card .label { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+    border-radius: 8px; padding: 12px 8px; text-align: center; }
+  .stat-card .number { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+  .stat-card .label { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
   .report-list { list-style: none; }
   .report-item { background: var(--surface); border: 1px solid var(--border);
     border-radius: 8px; padding: 16px; margin-bottom: 8px;
