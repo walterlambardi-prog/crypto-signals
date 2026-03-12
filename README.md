@@ -24,8 +24,9 @@ Crypto Signals is a Mastra-based platform that provides AI-powered cryptocurrenc
 
 ### Security
 
-- API keys are stored **only in browser localStorage** — never written to disk on the server
-- Server holds config **in-memory only** (lost on restart, re-synced from browser)
+- API keys are stored **only in browser localStorage** — never written to disk or memory on the server
+- **Multi-user safe** — each workflow request sends config per-request via `AsyncLocalStorage` (no global state)
+- Each user configures their own provider, model, and API key independently
 - No `.env` fallback — users must configure their own API key via Settings
 - HTTPS enforced with HTTP→HTTPS redirect
 
@@ -71,12 +72,12 @@ src/mastra/
 │   └── crypto-scorer.ts         # LLM-judged signal quality evaluator
 └── reports/
     ├── index.ts                 # Barrel exports
-    ├── model-config.ts          # Dynamic LLM config (in-memory, 9 providers, 58+ models)
+    ├── model-config.ts          # Dynamic LLM config (AsyncLocalStorage per-request, 9 providers, 58+ models)
     ├── html-templates.ts        # Dashboard + report HTML generators
     ├── settings-ui.ts           # Settings page HTML (provider/model/key selection)
     ├── workflows-ui.ts          # Workflows execution page HTML
     ├── storage.ts               # LibSQL persistence for reports
-    └── routes.ts                # HTTP routes (reports, settings, workflows UI)
+    └── routes.ts                # HTTP routes (reports, settings, workflow execution)
 ```
 
 ---
@@ -117,11 +118,8 @@ See [API-GUIDE.md](API-GUIDE.md) for complete `curl` examples.
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/api/agents/crypto-signals-agent/generate` | Chat with the AI agent |
-| `POST` | `/api/workflows/crypto-analysis-workflow/start-async` | Run crypto analysis |
-| `POST` | `/api/workflows/market-scan-workflow/start-async` | Run market scan |
-| `GET` | `/model-config` | Current model config (masked key) |
-| `GET` | `/model-config/status` | Check if model is configured |
-| `POST` | `/model-config` | Save model config |
+| `POST` | `/workflows/execute/analysis` | Run crypto analysis (per-request config) |
+| `POST` | `/workflows/execute/scan` | Run market scan (per-request config) |
 | `POST` | `/model-config/test` | Test model connection |
 
 ---

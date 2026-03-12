@@ -3,6 +3,6 @@ export { saveReport, listReports, getReport, getLatestReportForCoin, deleteRepor
 export { generateReportHtml, generateDashboardHtml } from './html-templates';
 export { generateWorkflowsPageHtml } from './workflows-ui';
 export { generateSettingsPageHtml } from './settings-ui';
-export { getModelConfig, setModelConfig, resetModelConfig, getMaskedConfig, getModelForAgent, testModelConnection, isModelConfigured, withModelConfig, AVAILABLE_MODELS } from './model-config';
+export { getModelConfig, setModelConfig, resetModelConfig, getMaskedConfig, getModelForAgent, testModelConnection, isModelConfigured, withModelConfig, getActiveModelLabel, AVAILABLE_MODELS } from './model-config';
 export type { ReportData } from './html-templates';
 export type { ModelConfig } from './model-config';

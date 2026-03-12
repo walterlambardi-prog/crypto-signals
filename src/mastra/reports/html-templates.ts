@@ -114,6 +114,7 @@ export interface ReportData {
   report: string;
   createdAt: string;
   coinId?: string;
+  modelLabel?: string;
 }
 
 export function generateReportHtml(data: ReportData): string {
@@ -197,9 +198,13 @@ export function generateDashboardHtml(
                 dateStyle: 'short',
                 timeStyle: 'short',
               });
+              const modelTag = r.modelLabel
+                ? `<span style="font-size:0.75rem;color:var(--muted);background:rgba(110,118,129,0.15);padding:2px 8px;border-radius:10px;">${escapeHtml(r.modelLabel)}</span>`
+                : '';
               return `<li class="report-item">
                 <a href="/reports/${r.id}">${escapeHtml(r.title)}</a>
                 <div class="report-meta">
+                  ${modelTag}
                   <span class="badge ${badge}">${label}</span>
                   <span class="meta">${date}</span>
                 </div>

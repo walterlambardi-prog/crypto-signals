@@ -157,6 +157,18 @@ export function withModelConfig<T>(config: ModelConfig, fn: () => Promise<T>): P
   return configStorage.run(config, fn);
 }
 
+/**
+ * Returns a human-readable label for the currently active model (e.g. "google/gemini-2.5-flash").
+ * Only works inside a withModelConfig() context. Returns undefined otherwise.
+ */
+export function getActiveModelLabel(): string | undefined {
+  const cfg = configStorage.getStore();
+  if (cfg?.provider && cfg?.modelName) {
+    return `${cfg.provider}/${cfg.modelName}`;
+  }
+  return undefined;
+}
+
 // ─── Legacy In-Memory Config Store (for Settings UI only) ────────────
 // Used only by Settings page save/test. Workflow execution uses per-request config.
 

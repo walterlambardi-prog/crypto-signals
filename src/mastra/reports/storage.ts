@@ -24,7 +24,8 @@ export async function initReportsTable(): Promise<void> {
       title TEXT NOT NULL,
       report TEXT NOT NULL,
       coin_id TEXT,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      model_label TEXT
     )
   `);
 }
@@ -34,9 +35,9 @@ export async function saveReport(data: ReportData): Promise<string> {
   await initReportsTable();
   const client = getDb();
   await client.execute({
-    sql: `INSERT OR REPLACE INTO reports (id, type, title, report, coin_id, created_at)
-          VALUES (?, ?, ?, ?, ?, ?)`,
-    args: [data.id, data.type, data.title, data.report, data.coinId ?? null, data.createdAt],
+    sql: `INSERT OR REPLACE INTO reports (id, type, title, report, coin_id, created_at, model_label)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    args: [data.id, data.type, data.title, data.report, data.coinId ?? null, data.createdAt, data.modelLabel ?? null],
   });
   return data.id;
 }
@@ -65,6 +66,7 @@ export async function listReports(filter?: 'analysis' | 'scan'): Promise<ReportD
     report: row['report'] as string,
     coinId: (row['coin_id'] as string) || undefined,
     createdAt: row['created_at'] as string,
+    modelLabel: (row['model_label'] as string) || undefined,
   }));
 }
 
@@ -88,6 +90,7 @@ export async function getReport(id: string): Promise<ReportData | null> {
     report: row['report'] as string,
     coinId: (row['coin_id'] as string) || undefined,
     createdAt: row['created_at'] as string,
+    modelLabel: (row['model_label'] as string) || undefined,
   };
 }
 
@@ -111,6 +114,7 @@ export async function getLatestReportForCoin(coinId: string): Promise<ReportData
     report: row['report'] as string,
     coinId: (row['coin_id'] as string) || undefined,
     createdAt: row['created_at'] as string,
+    modelLabel: (row['model_label'] as string) || undefined,
   };
 }
 

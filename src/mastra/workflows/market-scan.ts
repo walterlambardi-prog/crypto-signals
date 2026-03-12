@@ -1,6 +1,7 @@
 import { createStep, createWorkflow } from '@mastra/core/workflows';
 import { z } from 'zod';
 import { saveReport, generateReportId } from '../reports/storage';
+import { getActiveModelLabel } from '../reports/model-config';
 
 const COINGECKO_BASE = 'https://api.coingecko.com/api/v3';
 const FEAR_GREED_API = 'https://api.alternative.me/fng';
@@ -222,6 +223,7 @@ const saveHtmlReport = createStep({
       title,
       report: inputData.report,
       createdAt: now.toISOString(),
+      modelLabel: getActiveModelLabel(),
     });
 
     return {

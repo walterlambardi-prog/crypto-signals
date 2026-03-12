@@ -24,6 +24,14 @@ import { testModelConnection, withModelConfig } from './model-config';
 // after all modules are fully initialized.
 
 export const reportRoutes = [
+  // ── Root redirect → Dashboard ─────────────────────────────────────
+  registerApiRoute('/', {
+    method: 'GET',
+    handler: async (c) => {
+      return c.redirect('/reports');
+    },
+  }),
+
   // ── Dashboard ──────────────────────────────────────────────────────
   registerApiRoute('/reports', {
     method: 'GET',
