@@ -209,6 +209,7 @@ const fetchAndAnalyze = createStep({
   description: 'Fetches current price, historical data, computes technical indicators, and market sentiment for a cryptocurrency',
   inputSchema: z.object({
     coinId: z.string().describe('CoinGecko coin ID (e.g., "bitcoin")'),
+    modelLabel: z.string().optional().describe('Model used for this run'),
   }),
   outputSchema: coinDataSchema,
   execute: async ({ inputData }) => {
@@ -413,6 +414,7 @@ const cryptoAnalysisWorkflow = createWorkflow({
   id: 'crypto-analysis-workflow',
   inputSchema: z.object({
     coinId: z.string().describe('CoinGecko coin ID (e.g., "bitcoin", "ethereum", "solana")'),
+    modelLabel: z.string().optional().describe('Model used for this run'),
   }),
   outputSchema: z.object({
     report: z.string(),

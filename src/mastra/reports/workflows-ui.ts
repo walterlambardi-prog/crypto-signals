@@ -422,8 +422,8 @@ export function generateWorkflowsPageHtml(): string {
           ...(analysisRes.runs || []).map(r => ({ ...r, workflow: 'crypto-analysis' })),
           ...(scanRes.runs || []).map(r => ({ ...r, workflow: 'market-scan' })),
         ].sort((a, b) => {
-          const tA = a.snapshot?.completedAt || a.snapshot?.createdAt || 0;
-          const tB = b.snapshot?.completedAt || b.snapshot?.createdAt || 0;
+          const tA = a.snapshot?.timestamp || 0;
+          const tB = b.snapshot?.timestamp || 0;
           return tB - tA;
         }).slice(0, 15);
 
@@ -444,30 +444,37 @@ export function generateWorkflowsPageHtml(): string {
 
           // Extract input info
           let inputInfo = '—';
-          const inputStep = snap.context?.steps?.input;
-          if (inputStep) {
-            if (inputStep.coinId) inputInfo = inputStep.coinId;
-            else if (inputStep.limit) inputInfo = 'Top ' + inputStep.limit;
+          const inputData = snap.context?.input;
+          if (inputData) {
+            if (inputData.coinId) inputInfo = inputData.coinId;
+            else if (inputData.limit) inputInfo = 'Top ' + inputData.limit;
+          }
+
+          // Extract model info
+          let modelInfo = '—';
+          if (inputData && inputData.modelLabel) {
+            modelInfo = inputData.modelLabel;
           }
 
           // Check for report URL
           let reportLink = '';
-          if (snap.context?.steps) {
-            for (const step of Object.values(snap.context.steps)) {
-              if (step && typeof step === 'object' && step.output && step.output.reportUrl) {
-                reportLink = '<a class="link" href="' + step.output.reportUrl + '">View</a>';
-                break;
-              }
+          const ctx = snap.context || {};
+          for (const [key, step] of Object.entries(ctx)) {
+            if (key === 'input') continue;
+            if (step && typeof step === 'object' && step.output && step.output.reportUrl) {
+              reportLink = '<a class="link" href="' + step.output.reportUrl + '">View</a>';
+              break;
             }
           }
 
-          const ts = snap.completedAt || snap.createdAt;
+          const ts = snap.timestamp;
           const dateStr = ts ? new Date(ts).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' }) : '—';
 
           rows += '<tr>' +
             '<td><span class="badge ' + badgeClass + '">' + badgeLabel + '</span></td>' +
             '<td>' + inputInfo + '</td>' +
             '<td><span class="status-badge ' + statusClass + '">' + statusIcon + ' ' + status + '</span></td>' +
+            '<td class="meta" style="font-size:0.8em;color:#8b949e">' + modelInfo + '</td>' +
             '<td class="meta">' + dateStr + '</td>' +
             '<td>' + reportLink + '</td>' +
             '</tr>';
@@ -475,7 +482,7 @@ export function generateWorkflowsPageHtml(): string {
 
         container.innerHTML =
           '<table class="runs-table">' +
-          '<thead><tr><th>Type</th><th>Input</th><th>Status</th><th>Date</th><th>Report</th></tr></thead>' +
+          '<thead><tr><th>Type</th><th>Input</th><th>Status</th><th>Model</th><th>Date</th><th>Report</th></tr></thead>' +
           '<tbody>' + rows + '</tbody></table>';
 
       } catch (err) {

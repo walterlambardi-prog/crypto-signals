@@ -174,7 +174,7 @@ export const reportRoutes = [
         const result = await withModelConfig({ provider, modelName, apiKey }, async () => {
           const run = await workflow.createRun();
           return run.start({
-            inputData: { coinId },
+            inputData: { coinId, modelLabel: `${provider}/${modelName}` },
           });
         });
 
@@ -203,7 +203,7 @@ export const reportRoutes = [
         const result = await withModelConfig({ provider, modelName, apiKey }, async () => {
           const run = await workflow.createRun();
           return run.start({
-            inputData: { limit: limit || 10 },
+            inputData: { limit: limit || 10, modelLabel: `${provider}/${modelName}` },
           });
         });
 

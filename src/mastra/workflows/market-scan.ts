@@ -49,6 +49,7 @@ const fetchMarketSnapshot = createStep({
   description: 'Fetches global market data, top coins, and sentiment',
   inputSchema: z.object({
     limit: z.number().optional().describe('Number of top coins to scan (default: 20)'),
+    modelLabel: z.string().optional().describe('Model used for this run'),
   }),
   outputSchema: marketSnapshotSchema,
   execute: async ({ inputData }) => {
@@ -240,6 +241,7 @@ const marketScanWorkflow = createWorkflow({
   id: 'market-scan-workflow',
   inputSchema: z.object({
     limit: z.number().optional().describe('Number of top coins to scan (default: 20)'),
+    modelLabel: z.string().optional().describe('Model used for this run'),
   }),
   outputSchema: z.object({
     report: z.string(),
