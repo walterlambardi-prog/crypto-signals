@@ -7,17 +7,21 @@
 //   DELETE /reports/:id     → Delete a report (JSON)
 //   GET /workflows          → Interactive workflows page (HTML)
 //   GET /settings           → Model configuration page (HTML)
-//   GET /model-config       → Get current model config (JSON)
-//   POST /model-config      → Save model config (JSON)
 //   POST /model-config/test → Test model connection (JSON)
-//   POST /model-config/reset → Reset to defaults (JSON)
+//   POST /workflows/execute/analysis → Run crypto analysis (per-request config)
+//   POST /workflows/execute/scan     → Run market scan (per-request config)
 
 import { registerApiRoute } from '@mastra/core/server';
 import { generateReportHtml, generateDashboardHtml } from './html-templates';
 import { listReports, getReport, getLatestReportForCoin, deleteReport } from './storage';
 import { generateWorkflowsPageHtml } from './workflows-ui';
 import { generateSettingsPageHtml } from './settings-ui';
-import { getMaskedConfig, setModelConfig, testModelConnection, resetModelConfig, isModelConfigured } from './model-config';
+import { testModelConnection, withModelConfig } from './model-config';
+
+// NOTE: We do NOT import `mastra` or workflows at the top level to avoid
+// circular dependencies (index.ts → reports → routes.ts → index.ts).
+// Instead, we use dynamic import() inside the route handlers, which runs
+// after all modules are fully initialized.
 
 export const reportRoutes = [
   // ── Dashboard ──────────────────────────────────────────────────────
@@ -111,32 +115,6 @@ export const reportRoutes = [
     },
   }),
 
-  // ── Get current model config (masked API key) ─────────────────────
-  registerApiRoute('/model-config', {
-    method: 'GET',
-    handler: async (c: any) => {
-      return c.json(getMaskedConfig());
-    },
-  }),
-
-  // ── Save model config ─────────────────────────────────────────────
-  registerApiRoute('/model-config', {
-    method: 'POST',
-    handler: async (c: any) => {
-      try {
-        const body = await c.req.json();
-        const { provider, modelName, apiKey } = body;
-        if (!provider || !modelName || !apiKey) {
-          return c.json({ success: false, error: 'provider, modelName, and apiKey are required' }, 400);
-        }
-        setModelConfig({ provider, modelName, apiKey });
-        return c.json({ success: true });
-      } catch (err: any) {
-        return c.json({ success: false, error: err.message }, 500);
-      }
-    },
-  }),
-
   // ── Test model connection ─────────────────────────────────────────
   // API key is REQUIRED — no fallback to env vars
   registerApiRoute('/model-config/test', {
@@ -162,20 +140,69 @@ export const reportRoutes = [
     },
   }),
 
-  // ── Model config status (quick boolean check) ────────────────
-  registerApiRoute('/model-config/status', {
-    method: 'GET',
+  // ── Custom Workflow Execution (per-request config isolation) ────────
+  // These endpoints wrap workflow execution inside withModelConfig() so
+  // each user's API key is isolated via AsyncLocalStorage.
+  // The browser sends { provider, modelName, apiKey } with every request.
+
+  registerApiRoute('/workflows/execute/analysis', {
+    method: 'POST',
     handler: async (c: any) => {
-      return c.json({ configured: isModelConfigured() });
+      try {
+        const body = await c.req.json();
+        const { coinId, provider, modelName, apiKey } = body;
+
+        if (!coinId) {
+          return c.json({ status: 'failed', error: 'coinId is required' }, 400);
+        }
+        if (!provider || !modelName || !apiKey) {
+          return c.json({ status: 'failed', error: 'Model config (provider, modelName, apiKey) is required' }, 400);
+        }
+
+        // Dynamic import to avoid circular dependency
+        const { mastra } = await import('../index');
+        const workflow = mastra.getWorkflow('cryptoAnalysisWorkflow');
+
+        const result = await withModelConfig({ provider, modelName, apiKey }, async () => {
+          const run = await workflow.createRun();
+          return run.start({
+            inputData: { coinId },
+          });
+        });
+
+        return c.json({ status: 'success', result });
+      } catch (err: any) {
+        return c.json({ status: 'failed', error: err.message || 'Unknown error' }, 500);
+      }
     },
   }),
 
-  // ── Reset model config to defaults (clear in-memory) ───────────────
-  registerApiRoute('/model-config/reset', {
+  registerApiRoute('/workflows/execute/scan', {
     method: 'POST',
     handler: async (c: any) => {
-      resetModelConfig();
-      return c.json({ success: true });
+      try {
+        const body = await c.req.json();
+        const { limit, provider, modelName, apiKey } = body;
+
+        if (!provider || !modelName || !apiKey) {
+          return c.json({ status: 'failed', error: 'Model config (provider, modelName, apiKey) is required' }, 400);
+        }
+
+        // Dynamic import to avoid circular dependency
+        const { mastra } = await import('../index');
+        const workflow = mastra.getWorkflow('marketScanWorkflow');
+
+        const result = await withModelConfig({ provider, modelName, apiKey }, async () => {
+          const run = await workflow.createRun();
+          return run.start({
+            inputData: { limit: limit || 10 },
+          });
+        });
+
+        return c.json({ status: 'success', result });
+      } catch (err: any) {
+        return c.json({ status: 'failed', error: err.message || 'Unknown error' }, 500);
+      }
     },
   }),
 ];

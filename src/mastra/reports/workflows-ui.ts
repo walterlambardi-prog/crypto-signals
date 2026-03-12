@@ -213,60 +213,41 @@ export function generateWorkflowsPageHtml(): string {
     const BASE = window.location.origin;
     let isConfigured = false;
 
-    // ── Check config status + sync from localStorage ──
-    async function checkAndSyncConfig() {
-      const local = localStorage.getItem('crypto-signals-model-config');
-      if (local) {
-        try {
-          const cfg = JSON.parse(local);
-          if (cfg.provider && cfg.modelName && cfg.apiKey) {
-            // Sync to server memory
-            await fetch(BASE + '/model-config', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: local,
-            });
-            isConfigured = true;
-            const badge = document.getElementById('model-badge');
-            badge.textContent = '🤖 ' + cfg.provider + '/' + cfg.modelName;
-            document.getElementById('config-overlay').style.display = 'none';
-            // Enable buttons
-            document.getElementById('btn-analysis').disabled = false;
-            document.getElementById('btn-scan').disabled = false;
-            return;
-          }
-        } catch {}
-      }
-
-      // Check server status as fallback
+    // ── Get config from localStorage (per-user, per-browser) ──
+    function getLocalConfig() {
       try {
-        const r = await fetch(BASE + '/model-config/status');
-        const d = await r.json();
-        if (d.configured) {
-          isConfigured = true;
-          const mr = await fetch(BASE + '/model-config');
-          const md = await mr.json();
-          const badge = document.getElementById('model-badge');
-          badge.textContent = '🤖 ' + md.provider + '/' + md.modelName;
-          document.getElementById('config-overlay').style.display = 'none';
-          document.getElementById('btn-analysis').disabled = false;
-          document.getElementById('btn-scan').disabled = false;
-          return;
-        }
+        const raw = localStorage.getItem('crypto-signals-model-config');
+        if (!raw) return null;
+        const cfg = JSON.parse(raw);
+        if (cfg.provider && cfg.modelName && cfg.apiKey) return cfg;
       } catch {}
-
-      // Not configured — show overlay and disable buttons
-      isConfigured = false;
-      document.getElementById('config-overlay').style.display = 'flex';
-      document.getElementById('model-badge').textContent = '⚠️ Not Configured';
-      document.getElementById('btn-analysis').disabled = true;
-      document.getElementById('btn-scan').disabled = true;
+      return null;
     }
-    checkAndSyncConfig();
+
+    // ── Check if user has config in localStorage ──
+    function checkConfig() {
+      const cfg = getLocalConfig();
+      if (cfg) {
+        isConfigured = true;
+        const badge = document.getElementById('model-badge');
+        badge.textContent = '🤖 ' + cfg.provider + '/' + cfg.modelName;
+        document.getElementById('config-overlay').style.display = 'none';
+        document.getElementById('btn-analysis').disabled = false;
+        document.getElementById('btn-scan').disabled = false;
+      } else {
+        isConfigured = false;
+        document.getElementById('config-overlay').style.display = 'flex';
+        document.getElementById('model-badge').textContent = '⚠️ Not Configured';
+        document.getElementById('btn-analysis').disabled = true;
+        document.getElementById('btn-scan').disabled = true;
+      }
+    }
+    checkConfig();
 
     // ── Run Crypto Analysis ──
     async function runAnalysis() {
-      if (!isConfigured) {
+      const cfg = getLocalConfig();
+      if (!cfg) {
         document.getElementById('config-overlay').style.display = 'flex';
         return;
       }
@@ -281,13 +262,22 @@ export function generateWorkflowsPageHtml(): string {
         ['fetch-and-analyze', 'generate-analysis-report', 'save-html-report']);
 
       try {
-        const res = await fetch(BASE + '/api/workflows/crypto-analysis-workflow/start-async', {
+        const res = await fetch(BASE + '/workflows/execute/analysis', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ inputData: { coinId } }),
+          body: JSON.stringify({
+            coinId,
+            provider: cfg.provider,
+            modelName: cfg.modelName,
+            apiKey: cfg.apiKey,
+          }),
         });
         const data = await res.json();
-        panel.innerHTML = renderResult(data, 'analysis');
+        if (data.status === 'failed') {
+          panel.innerHTML = renderError(data.error || 'Unknown error');
+        } else {
+          panel.innerHTML = renderResult(data.result || data, 'analysis');
+        }
       } catch (err) {
         panel.innerHTML = renderError(err.message);
       } finally {
@@ -299,7 +289,8 @@ export function generateWorkflowsPageHtml(): string {
 
     // ── Run Market Scan ──
     async function runScan() {
-      if (!isConfigured) {
+      const cfg = getLocalConfig();
+      if (!cfg) {
         document.getElementById('config-overlay').style.display = 'flex';
         return;
       }
@@ -314,13 +305,22 @@ export function generateWorkflowsPageHtml(): string {
         ['fetch-market-snapshot', 'identify-opportunities', 'save-scan-html-report']);
 
       try {
-        const res = await fetch(BASE + '/api/workflows/market-scan-workflow/start-async', {
+        const res = await fetch(BASE + '/workflows/execute/scan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ inputData: { limit } }),
+          body: JSON.stringify({
+            limit,
+            provider: cfg.provider,
+            modelName: cfg.modelName,
+            apiKey: cfg.apiKey,
+          }),
         });
         const data = await res.json();
-        panel.innerHTML = renderResult(data, 'scan');
+        if (data.status === 'failed') {
+          panel.innerHTML = renderError(data.error || 'Unknown error');
+        } else {
+          panel.innerHTML = renderResult(data.result || data, 'scan');
+        }
       } catch (err) {
         panel.innerHTML = renderError(err.message);
       } finally {

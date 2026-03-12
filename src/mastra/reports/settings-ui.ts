@@ -1,6 +1,7 @@
 // ─── Settings UI Page ─────────────────────────────────────────────────
 // Interactive page for configuring the LLM model and API key.
-// Settings are saved to both localStorage (browser) and server (JSON file).
+// Settings are saved to localStorage only. Each workflow request sends the
+// config per-request (via AsyncLocalStorage on the server) for multi-user safety.
 
 import { AVAILABLE_MODELS } from './model-config';
 
@@ -166,11 +167,11 @@ export function generateSettingsPageHtml(): string {
       <h2>ℹ️ How it works</h2>
       <ul style="color:var(--muted);font-size:0.85rem;padding-left:20px;line-height:1.8;">
         <li><strong>You must configure your own API key</strong> before workflows can run. There is no default key.</li>
-        <li>Your API key is stored <strong>only in your browser</strong> (localStorage). It is <strong>never saved to disk</strong> on the server.</li>
-        <li>On each page load, your browser syncs the config to <strong>server memory</strong> so workflows can use it.</li>
-        <li>If the server restarts, the config is automatically re-synced from your browser on your next visit.</li>
+        <li>Your API key is stored <strong>only in your browser</strong> (localStorage). It is <strong>never saved to disk</strong> on the server and <strong>never stored in server memory</strong>.</li>
+        <li>When you run a workflow, your config is sent <strong>per-request</strong> and used only for that execution. Other users' configs are completely isolated.</li>
+        <li><strong>Multi-user safe:</strong> each user configures their own provider, model, and API key independently.</li>
         <li>Use <strong>Test Connection</strong> to verify your API key works before saving.</li>
-        <li>The <strong>Clear Configuration</strong> button removes the key from both browser and server memory. Workflows will stop working until you configure a new key.</li>
+        <li>The <strong>Clear Configuration</strong> button removes the key from your browser. Workflows will stop working until you configure a new key.</li>
       </ul>
     </div>
 
@@ -220,43 +221,41 @@ export function generateSettingsPageHtml(): string {
       if (type === 'success') setTimeout(() => { el.className = 'status-msg'; }, 5000);
     }
 
-    // ── Load current config ──
-    // localStorage is the source of truth. On load, re-sync to server (in-memory).
-    async function loadConfig() {
+    // ── Load current config from localStorage (no server sync) ──
+    function loadConfig() {
       const local = localStorage.getItem('crypto-signals-model-config');
       if (local) {
         try {
           const cfg = JSON.parse(local);
           applyConfigToForm(cfg);
-
-          // Re-sync to server memory (key never saved to disk)
-          await fetch(BASE + '/model-config', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: local,
-          });
-
-          // Update current config display
-          const key = cfg.apiKey || '';
-          const hint = key.length > 8 ? key.slice(0, 4) + '••••' + key.slice(-4) : '••••••••';
-          document.getElementById('cc-provider').textContent = MODELS[cfg.provider]?.label || cfg.provider;
-          document.getElementById('cc-model').textContent = cfg.modelName;
-          document.getElementById('cc-key').textContent = 'Key: ' + hint;
+          setConfiguredUI(cfg);
           return;
         } catch {}
       }
+      // No config found
+      setNotConfiguredUI();
+    }
 
-      // No localStorage — show server defaults (env-based)
-      try {
-        const res = await fetch(BASE + '/model-config');
-        const data = await res.json();
-        document.getElementById('cc-provider').textContent = MODELS[data.provider]?.label || data.provider;
-        document.getElementById('cc-model').textContent = data.modelName;
-        document.getElementById('cc-key').textContent = 'Key: ' + data.apiKeyHint;
-        applyConfigToForm({ provider: data.provider, modelName: data.modelName, apiKey: '' });
-      } catch (err) {
-        console.error('Failed to load server config:', err);
-      }
+    function setConfiguredUI(cfg) {
+      const key = cfg.apiKey || '';
+      const hint = key.length > 8 ? key.slice(0, 4) + '••••' + key.slice(-4) : '••••••••';
+      document.getElementById('cc-status').textContent = 'Configured';
+      document.getElementById('cc-status').style.background = 'rgba(63,185,80,0.15)';
+      document.getElementById('cc-status').style.color = 'var(--green)';
+      const provEl = document.getElementById('cc-provider');
+      provEl.textContent = MODELS[cfg.provider]?.label || cfg.provider;
+      provEl.style.display = 'inline-block';
+      document.getElementById('cc-model').textContent = cfg.modelName;
+      document.getElementById('cc-key').textContent = 'Key: ' + hint;
+    }
+
+    function setNotConfiguredUI() {
+      document.getElementById('cc-status').textContent = 'Not Configured';
+      document.getElementById('cc-status').style.background = 'rgba(248,81,73,0.15)';
+      document.getElementById('cc-status').style.color = 'var(--red)';
+      document.getElementById('cc-provider').style.display = 'none';
+      document.getElementById('cc-model').textContent = '—';
+      document.getElementById('cc-key').textContent = '—';
     }
 
     function applyConfigToForm(cfg) {
@@ -270,44 +269,17 @@ export function generateSettingsPageHtml(): string {
       }
     }
 
-    // ── Save config ──
-    // Save to localStorage (persistent) + server memory (ephemeral)
-    async function saveConfig() {
+    // ── Save config to localStorage only ──
+    function saveConfig() {
       const config = getFormConfig();
       if (!config.apiKey) {
         showStatus('API key is required.', 'error');
         return;
       }
 
-      const btn = document.getElementById('btn-save');
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spinner"></span> Saving...';
-
-      try {
-        // 1. Save to localStorage (source of truth)
-        localStorage.setItem('crypto-signals-model-config', JSON.stringify(config));
-
-        // 2. Sync to server memory
-        const res = await fetch(BASE + '/model-config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(config),
-        });
-        const data = await res.json();
-
-        if (data.success) {
-          showStatus('Configuration saved! (stored in browser, synced to server memory)', 'success');
-          loadConfig();
-        } else {
-          showStatus('Saved to browser, but server sync failed: ' + (data.error || 'Unknown error'), 'error');
-        }
-      } catch (err) {
-        // localStorage save succeeded even if server fails
-        showStatus('Saved to browser. Server sync error: ' + err.message, 'error');
-      } finally {
-        btn.disabled = false;
-        btn.innerHTML = '💾 Save';
-      }
+      localStorage.setItem('crypto-signals-model-config', JSON.stringify(config));
+      setConfiguredUI(config);
+      showStatus('Configuration saved! Your API key is stored only in this browser.', 'success');
     }
 
     // ── Test connection ──
@@ -345,21 +317,14 @@ export function generateSettingsPageHtml(): string {
       }
     }
 
-    // ── Reset to default ──
-    async function resetConfig() {
+    // ── Clear config (localStorage only) ──
+    function resetConfig() {
       if (!confirm('Clear configuration? Workflows will stop working until you set a new API key.')) return;
 
-      // Clear localStorage
       localStorage.removeItem('crypto-signals-model-config');
       document.getElementById('apiKey').value = '';
-
-      // Clear server memory
-      try {
-        await fetch(BASE + '/model-config/reset', { method: 'POST' });
-      } catch {}
-
-      showStatus('Configuration cleared. Please configure a new API key to use workflows.', 'info');
       setNotConfiguredUI();
+      showStatus('Configuration cleared. Please configure a new API key to use workflows.', 'info');
     }
 
     // ── Get form values ──

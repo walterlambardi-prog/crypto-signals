@@ -3,9 +3,16 @@
 //
 // SECURITY: API keys are NEVER written to disk on the server.
 //   - Client stores config in localStorage (persistence across sessions)
-//   - Client sends config to server on page load / save
-//   - Server holds config in memory only (lost on restart)
-//   - On restart, client re-sends from localStorage on next visit
+//   - Client sends config per-request when executing workflows
+//   - Server uses AsyncLocalStorage for per-request isolation (multi-user safe)
+//   - No global in-memory config — each request carries its own credentials
+//
+// MULTI-USER: Each user's API key is isolated via AsyncLocalStorage.
+//   - User A and User B can use different providers/keys simultaneously
+//   - No request can read or overwrite another request's config
+//   - Config exists in server memory ONLY for the duration of the request
+
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -135,16 +142,29 @@ export const AVAILABLE_MODELS: Record<string, { label: string; models: { id: str
   },
 };
 
-// ─── In-Memory Config Store ──────────────────────────────────────────
-// This variable lives only in server RAM. Never written to disk.
-// There is NO fallback to environment variables — users MUST configure
-// their own API key via the Settings page.
+// ─── Per-Request Config (AsyncLocalStorage) ─────────────────────────
+// Each HTTP request carries its own ModelConfig via AsyncLocalStorage.
+// This ensures multi-user isolation — no shared global state.
+
+const configStorage = new AsyncLocalStorage<ModelConfig>();
+
+/**
+ * Execute a function with a specific model config context.
+ * The config is available to getModelForAgent() for the duration of the callback.
+ * Concurrent requests each get their own isolated config.
+ */
+export function withModelConfig<T>(config: ModelConfig, fn: () => Promise<T>): Promise<T> {
+  return configStorage.run(config, fn);
+}
+
+// ─── Legacy In-Memory Config Store (for Settings UI only) ────────────
+// Used only by Settings page save/test. Workflow execution uses per-request config.
 
 let inMemoryConfig: ModelConfig | null = null;
 
-// ─── Read / Write (in-memory only) ───────────────────────────────────
+// ─── Read / Write ────────────────────────────────────────────────────
 
-/** Returns the current config or null if not configured. */
+/** Returns the current global config or null. Used by Settings UI. */
 export function getModelConfig(): ModelConfig | null {
   if (inMemoryConfig?.provider && inMemoryConfig?.modelName && inMemoryConfig?.apiKey) {
     return inMemoryConfig;
@@ -152,8 +172,16 @@ export function getModelConfig(): ModelConfig | null {
   return null;
 }
 
-/** Returns true when a valid config (with API key) is loaded in memory. */
+/**
+ * Returns true when either:
+ * - A per-request config is active (AsyncLocalStorage), OR
+ * - The legacy global config has a valid API key
+ */
 export function isModelConfigured(): boolean {
+  const requestConfig = configStorage.getStore();
+  if (requestConfig?.provider && requestConfig?.modelName && requestConfig?.apiKey) {
+    return true;
+  }
   return getModelConfig() !== null;
 }
 
@@ -199,10 +227,17 @@ const ENV_KEYS: Record<string, string> = {
 // ─── Dynamic Model for Agent ─────────────────────────────────────────
 // Returns a Mastra model string (e.g. 'google/gemini-2.5-flash')
 // and sets the appropriate env var so Mastra resolves the API key.
-// Throws if no config has been set — callers must check isModelConfigured() first.
+//
+// Resolution order:
+// 1. Per-request config (AsyncLocalStorage) — multi-user safe
+// 2. Legacy global config (inMemoryConfig) — fallback for Settings UI test
+// 3. Throws if neither is available
 
 export function getModelForAgent(): string {
-  const config = getModelConfig();
+  // 1. Check per-request config (AsyncLocalStorage)
+  const requestConfig = configStorage.getStore();
+  const config = requestConfig || getModelConfig();
+
   if (!config) {
     throw new Error('Model not configured. Please configure your API key in Settings before running workflows.');
   }

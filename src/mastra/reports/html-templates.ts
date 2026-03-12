@@ -149,31 +149,16 @@ export function generateReportHtml(data: ReportData): string {
       Crypto Signals — Powered by Mastra AI · This is not financial advice.
     </footer>
   </div>  <script>
-    (async function() {
-      // Check if model is configured — show banner if not
-      const local = localStorage.getItem('crypto-signals-model-config');
+    (function() {
+      // Check if model is configured from localStorage only (no server sync)
       let configured = false;
-      if (local) {
-        try {
+      try {
+        const local = localStorage.getItem('crypto-signals-model-config');
+        if (local) {
           const cfg = JSON.parse(local);
-          if (cfg.provider && cfg.modelName && cfg.apiKey) {
-            configured = true;
-            // Sync to server
-            await fetch(window.location.origin + '/model-config', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: local,
-            });
-          }
-        } catch {}
-      }
-      if (!configured) {
-        try {
-          const r = await fetch(window.location.origin + '/model-config/status');
-          const d = await r.json();
-          configured = d.configured;
-        } catch {}
-      }
+          configured = !!(cfg.provider && cfg.modelName && cfg.apiKey);
+        }
+      } catch {}
       if (!configured) {
         document.getElementById('config-banner').style.display = 'block';
       }
@@ -279,6 +264,21 @@ export function generateDashboardHtml(
       Crypto Signals — Powered by Mastra AI · This is not financial advice.
     </footer>
   </div>
+  <script>
+    (function() {
+      let configured = false;
+      try {
+        const local = localStorage.getItem('crypto-signals-model-config');
+        if (local) {
+          const cfg = JSON.parse(local);
+          configured = !!(cfg.provider && cfg.modelName && cfg.apiKey);
+        }
+      } catch {}
+      if (!configured) {
+        document.getElementById('config-banner').style.display = 'block';
+      }
+    })();
+  </script>
 </body>
 </html>`;
 }

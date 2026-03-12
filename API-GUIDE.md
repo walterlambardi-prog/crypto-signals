@@ -590,20 +590,27 @@ Página interactiva para seleccionar el modelo LLM y la API key sin tocar archiv
 
 Navegar a `/settings` en el browser.
 
-**Proveedores soportados:**
+**Proveedores soportados (9 providers, 58+ modelos):**
 
-| Provider | Modelos |
-|----------|--------|
-| Google Gemini | gemini-2.5-flash, gemini-2.5-pro, gemini-2.0-flash |
-| OpenAI | gpt-4o, gpt-4o-mini, gpt-4.1, gpt-4.1-mini, gpt-4.1-nano, o4-mini |
-| Anthropic | claude-sonnet-4-5, claude-haiku-3.5 |
+| Provider | Modelos | Env Var |
+|----------|---------|---------|
+| Google Gemini | Gemini 2.5 Pro/Flash/Flash Lite, 2.0 Flash/Lite, 1.5 Pro/Flash/Flash 8B | `GOOGLE_GENERATIVE_AI_API_KEY` |
+| OpenAI | o3 Pro/o3/o3 Mini, o4 Mini, o1/o1 Mini/o1 Pro, GPT-4.1/Mini/Nano, GPT-4.5 Preview, GPT-4o/Mini, GPT-4 Turbo | `OPENAI_API_KEY` |
+| Anthropic | Claude Opus 4.6/4.5/4, Sonnet 4.5/4, Haiku 3.5, 3.5 Sonnet v2, 3.5 Haiku, 3 Opus/Sonnet/Haiku | `ANTHROPIC_API_KEY` |
+| Groq | Llama 3.3 70B, 3.1 8B, 3.2 (90B/11B/3B/1B), DeepSeek R1 Distill, Qwen QwQ, Mixtral, Gemma 2 | `GROQ_API_KEY` |
+| xAI (Grok) | Grok 3/Fast/Mini/Mini Fast, Grok 2/Vision | `XAI_API_KEY` |
+| Mistral | Large, Small, Saba, Codestral, Pixtral Large, Nemo, Ministral 8B/3B | `MISTRAL_API_KEY` |
+| DeepSeek | Chat (V3), Reasoner (R1) | `DEEPSEEK_API_KEY` |
+| Perplexity | Sonar Pro/Sonar, Reasoning Pro/Reasoning, Deep Research | `PERPLEXITY_API_KEY` |
+| Cohere | Command A, R+, R, R 7B, Aya Expanse 32B/8B | `COHERE_API_KEY` |
 
 ### Arquitectura de seguridad
 
 - La API key se guarda **solo en localStorage** del browser (nunca en disco del servidor)
 - Al cargar cualquier página (Settings, Workflows), el browser sincroniza la config a **memoria del servidor**
 - Si el servidor se reinicia, la memoria se pierde → el browser re-envía desde localStorage en la próxima visita
-- El default usa la variable `GOOGLE_GENERATIVE_AI_API_KEY` del `.env` del servidor
+- **No hay fallback a variables de entorno** — el usuario DEBE configurar su API key via Settings antes de usar workflows
+- Si no hay API key configurada, la página de Workflows muestra un overlay bloqueante que redirige a Settings
 
 ### API Endpoints
 
@@ -615,7 +622,23 @@ curl -s $BASE/model-config
 
 Respuesta (API key siempre enmascarada):
 ```json
-{"provider":"google","modelName":"gemini-2.5-flash","apiKeyHint":"AIza••••10LU"}
+{"configured":true,"provider":"google","modelName":"gemini-2.5-flash","apiKeyHint":"AIza••••10LU"}
+```
+
+Si no hay config:
+```json
+{"configured":false,"provider":"","modelName":"","apiKeyHint":""}
+```
+
+#### Verificar si está configurado
+
+```bash
+curl -s $BASE/model-config/status
+```
+
+Respuesta:
+```json
+{"configured":true}
 ```
 
 #### Guardar config (en memoria del server)
@@ -629,24 +652,20 @@ curl -s -X POST $BASE/model-config \
 #### Testear conexión
 
 ```bash
-# Con API key custom
 curl -s -X POST $BASE/model-config/test \
   -H "Content-Type: application/json" \
   -d '{"provider":"google","modelName":"gemini-2.5-flash","apiKey":"your-key"}'
-
-# Sin API key (usa default del server .env)
-curl -s -X POST $BASE/model-config/test \
-  -H "Content-Type: application/json" \
-  -d '{"provider":"google","modelName":"gemini-2.5-flash","apiKey":""}'
 ```
 
-#### Reset a defaults
+> **Nota**: Se requiere un `apiKey` válido. No hay fallback a variables de entorno.
+
+#### Limpiar configuración
 
 ```bash
 curl -s -X POST $BASE/model-config/reset
 ```
 
-Limpia la config en memoria. Vuelve a usar la API key del `.env`.
+Limpia la config en memoria. Los workflows dejarán de funcionar hasta que se configure una nueva API key via Settings.
 
 ---
 
@@ -783,9 +802,10 @@ curl -s http://TU_IP_PUBLICA:4111/api/workflows/crypto-analysis-workflow/runs \
 | `GET` | `/workflows` | Interfaz web interactiva para ejecutar workflows |
 | `GET` | `/settings` | Página de configuración de modelo LLM |
 | `GET` | `/model-config` | Config actual del modelo (API key enmascarada) |
+| `GET` | `/model-config/status` | Verificar si el modelo está configurado |
 | `POST` | `/model-config` | Guardar config de modelo (en memoria del server) |
 | `POST` | `/model-config/test` | Testear conexión al modelo |
-| `POST` | `/model-config/reset` | Reset a config default (env var) |
+| `POST` | `/model-config/reset` | Limpiar configuración (requiere re-configurar) |
 
 ### Endpoints de Memory
 
