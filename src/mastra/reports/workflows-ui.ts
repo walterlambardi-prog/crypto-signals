@@ -371,7 +371,9 @@ export function generateWorkflowsPageHtml(): string {
           }
         }
         if (s.status === 'failed' && s.error) {
-          detail = '<span style="color:var(--red)">' + escHtml(s.error) + '</span>';
+          const errMsg = typeof s.error === 'string' ? s.error
+            : (s.error.message || JSON.stringify(s.error));
+          detail = '<span style="color:var(--red)">' + escHtml(errMsg) + '</span>';
         }
         const duration = (s.startedAt && s.endedAt) ? ((s.endedAt - s.startedAt) / 1000).toFixed(1) + 's' : '';
         stepsHtml += '<div class="step-item">' +
