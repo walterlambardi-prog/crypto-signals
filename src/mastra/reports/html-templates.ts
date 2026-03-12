@@ -148,8 +148,37 @@ export function generateReportHtml(data: ReportData): string {
     <footer>
       Crypto Signals — Powered by Mastra AI · This is not financial advice.
     </footer>
-  </div>
-</body>
+  </div>  <script>
+    (async function() {
+      // Check if model is configured — show banner if not
+      const local = localStorage.getItem('crypto-signals-model-config');
+      let configured = false;
+      if (local) {
+        try {
+          const cfg = JSON.parse(local);
+          if (cfg.provider && cfg.modelName && cfg.apiKey) {
+            configured = true;
+            // Sync to server
+            await fetch(window.location.origin + '/model-config', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: local,
+            });
+          }
+        } catch {}
+      }
+      if (!configured) {
+        try {
+          const r = await fetch(window.location.origin + '/model-config/status');
+          const d = await r.json();
+          configured = d.configured;
+        } catch {}
+      }
+      if (!configured) {
+        document.getElementById('config-banner').style.display = 'block';
+      }
+    })();
+  </script></body>
 </html>`;
 }
 
@@ -208,6 +237,12 @@ export function generateDashboardHtml(
       <h1><span>⚡</span> Crypto Signals Reports</h1>
       <span class="meta">Powered by Mastra AI</span>
     </header>
+
+    <!-- Config Warning Banner (shown via JS if not configured) -->
+    <div id="config-banner" style="display:none;background:rgba(248,81,73,0.08);border:1px solid rgba(248,81,73,0.3);border-radius:8px;padding:14px 20px;margin-bottom:20px;">
+      <span style="color:#f85149;font-weight:600;">⚠️ API Key Not Configured</span>
+      <span style="color:#8b949e;font-size:0.85rem;margin-left:8px;">Configure your API key in <a href="/settings" style="color:#58a6ff;">Settings</a> before running workflows.</span>
+    </div>
 
     <div class="stats">
       <div class="stat-card">

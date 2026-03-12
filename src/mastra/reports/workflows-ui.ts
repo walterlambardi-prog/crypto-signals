@@ -104,10 +104,33 @@ export function generateWorkflowsPageHtml(): string {
     .runs-table tr:hover td { background: rgba(88,166,255,0.04); }
     .link { color: var(--accent); text-decoration: none; cursor: pointer; }
     .link:hover { text-decoration: underline; }
+
+    /* ── Config Required Overlay ── */
+    .config-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(13,17,23,0.92); z-index: 1000; display: flex;
+      align-items: center; justify-content: center; }
+    .config-overlay .config-box { background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 40px; max-width: 480px; text-align: center; }
+    .config-overlay h2 { font-size: 1.3rem; margin-bottom: 12px; }
+    .config-overlay p { color: var(--muted); font-size: 0.9rem; margin-bottom: 24px; line-height: 1.6; }
+    .config-overlay .btn-go { padding: 12px 32px; border-radius: 8px; border: none;
+      background: var(--accent); color: #fff; font-size: 1rem; font-weight: 600;
+      cursor: pointer; text-decoration: none; display: inline-block; }
+    .config-overlay .btn-go:hover { background: #79b8ff; }
   </style>
 </head>
 <body>
   <div class="container">
+    <!-- ── Config Required Overlay (hidden by default, shown if not configured) ── -->
+    <div class="config-overlay" id="config-overlay" style="display:none;">
+      <div class="config-box">
+        <h2>🔐 API Key Required</h2>
+        <p>You need to configure your LLM provider and API key in Settings before running workflows.<br>
+        No default API key is provided for security reasons.</p>
+        <a href="/settings" class="btn-go">⚙️ Go to Settings</a>
+      </div>
+    </div>
+
     <header>
       <div>
         <h1><span>🔄</span> Workflows</h1>
@@ -188,40 +211,65 @@ export function generateWorkflowsPageHtml(): string {
 
   <script>
     const BASE = window.location.origin;
+    let isConfigured = false;
 
-    // ── Load current model badge + sync config to server ──
-    async function syncConfigToServer() {
+    // ── Check config status + sync from localStorage ──
+    async function checkAndSyncConfig() {
       const local = localStorage.getItem('crypto-signals-model-config');
       if (local) {
         try {
           const cfg = JSON.parse(local);
-          // Sync to server memory
-          await fetch(BASE + '/model-config', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: local,
-          });
-          const badge = document.getElementById('model-badge');
-          badge.textContent = '🤖 ' + cfg.provider + '/' + cfg.modelName;
-          return;
+          if (cfg.provider && cfg.modelName && cfg.apiKey) {
+            // Sync to server memory
+            await fetch(BASE + '/model-config', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: local,
+            });
+            isConfigured = true;
+            const badge = document.getElementById('model-badge');
+            badge.textContent = '🤖 ' + cfg.provider + '/' + cfg.modelName;
+            document.getElementById('config-overlay').style.display = 'none';
+            // Enable buttons
+            document.getElementById('btn-analysis').disabled = false;
+            document.getElementById('btn-scan').disabled = false;
+            return;
+          }
         } catch {}
       }
-      // No localStorage — show defaults
+
+      // Check server status as fallback
       try {
-        const r = await fetch(BASE + '/model-config');
+        const r = await fetch(BASE + '/model-config/status');
         const d = await r.json();
-        const badge = document.getElementById('model-badge');
-        if (d.provider && d.modelName) {
-          badge.textContent = '🤖 ' + d.provider + '/' + d.modelName;
-        } else {
-          badge.textContent = 'Powered by Mastra AI';
+        if (d.configured) {
+          isConfigured = true;
+          const mr = await fetch(BASE + '/model-config');
+          const md = await mr.json();
+          const badge = document.getElementById('model-badge');
+          badge.textContent = '🤖 ' + md.provider + '/' + md.modelName;
+          document.getElementById('config-overlay').style.display = 'none';
+          document.getElementById('btn-analysis').disabled = false;
+          document.getElementById('btn-scan').disabled = false;
+          return;
         }
-      } catch(e) { document.getElementById('model-badge').textContent = 'Powered by Mastra AI'; }
+      } catch {}
+
+      // Not configured — show overlay and disable buttons
+      isConfigured = false;
+      document.getElementById('config-overlay').style.display = 'flex';
+      document.getElementById('model-badge').textContent = '⚠️ Not Configured';
+      document.getElementById('btn-analysis').disabled = true;
+      document.getElementById('btn-scan').disabled = true;
     }
-    syncConfigToServer();
+    checkAndSyncConfig();
 
     // ── Run Crypto Analysis ──
     async function runAnalysis() {
+      if (!isConfigured) {
+        document.getElementById('config-overlay').style.display = 'flex';
+        return;
+      }
       const coinId = document.getElementById('coinId').value;
       const btn = document.getElementById('btn-analysis');
       const panel = document.getElementById('result-analysis');
@@ -251,6 +299,10 @@ export function generateWorkflowsPageHtml(): string {
 
     // ── Run Market Scan ──
     async function runScan() {
+      if (!isConfigured) {
+        document.getElementById('config-overlay').style.display = 'flex';
+        return;
+      }
       const limit = parseInt(document.getElementById('scanLimit').value);
       const btn = document.getElementById('btn-scan');
       const panel = document.getElementById('result-scan');

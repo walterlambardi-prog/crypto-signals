@@ -48,26 +48,24 @@ export const AVAILABLE_MODELS: Record<string, { label: string; models: { id: str
 
 // ─── In-Memory Config Store ──────────────────────────────────────────
 // This variable lives only in server RAM. Never written to disk.
+// There is NO fallback to environment variables — users MUST configure
+// their own API key via the Settings page.
 
 let inMemoryConfig: ModelConfig | null = null;
 
-// ─── Default Config ──────────────────────────────────────────────────
-
-function getDefaultConfig(): ModelConfig {
-  return {
-    provider: 'google',
-    modelName: 'gemini-2.5-flash',
-    apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || '',
-  };
-}
-
 // ─── Read / Write (in-memory only) ───────────────────────────────────
 
-export function getModelConfig(): ModelConfig {
+/** Returns the current config or null if not configured. */
+export function getModelConfig(): ModelConfig | null {
   if (inMemoryConfig?.provider && inMemoryConfig?.modelName && inMemoryConfig?.apiKey) {
     return inMemoryConfig;
   }
-  return getDefaultConfig();
+  return null;
+}
+
+/** Returns true when a valid config (with API key) is loaded in memory. */
+export function isModelConfigured(): boolean {
+  return getModelConfig() !== null;
 }
 
 export function setModelConfig(config: ModelConfig): void {
@@ -80,11 +78,15 @@ export function resetModelConfig(): void {
 
 // ─── Masked Config (for UI responses) ────────────────────────────────
 
-export function getMaskedConfig(): { provider: string; modelName: string; apiKeyHint: string } {
+export function getMaskedConfig(): { configured: boolean; provider: string; modelName: string; apiKeyHint: string } {
   const config = getModelConfig();
+  if (!config) {
+    return { configured: false, provider: '', modelName: '', apiKeyHint: '' };
+  }
   const key = config.apiKey;
   const hint = key.length > 8 ? key.slice(0, 4) + '••••' + key.slice(-4) : '••••••••';
   return {
+    configured: true,
     provider: config.provider,
     modelName: config.modelName,
     apiKeyHint: hint,
@@ -102,9 +104,13 @@ const ENV_KEYS: Record<string, string> = {
 // ─── Dynamic Model for Agent ─────────────────────────────────────────
 // Returns a Mastra model string (e.g. 'google/gemini-2.5-flash')
 // and sets the appropriate env var so Mastra resolves the API key.
+// Throws if no config has been set — callers must check isModelConfigured() first.
 
 export function getModelForAgent(): string {
   const config = getModelConfig();
+  if (!config) {
+    throw new Error('Model not configured. Please configure your API key in Settings before running workflows.');
+  }
 
   // Set the env var for the active provider
   const envKey = ENV_KEYS[config.provider];
@@ -119,6 +125,10 @@ export function getModelForAgent(): string {
 // Quick test to verify the model + API key work.
 
 export async function testModelConnection(config: ModelConfig): Promise<{ ok: boolean; message: string }> {
+  if (!config.apiKey) {
+    return { ok: false, message: 'API key is required. Please provide your API key.' };
+  }
+
   const modelId = `${config.provider}/${config.modelName}`;
 
   // Set the env var temporarily

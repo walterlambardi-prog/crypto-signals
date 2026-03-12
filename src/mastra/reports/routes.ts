@@ -17,7 +17,7 @@ import { generateReportHtml, generateDashboardHtml } from './html-templates';
 import { listReports, getReport, getLatestReportForCoin, deleteReport } from './storage';
 import { generateWorkflowsPageHtml } from './workflows-ui';
 import { generateSettingsPageHtml } from './settings-ui';
-import { getMaskedConfig, setModelConfig, testModelConnection, resetModelConfig, getModelConfig } from './model-config';
+import { getMaskedConfig, setModelConfig, testModelConnection, resetModelConfig, isModelConfigured } from './model-config';
 
 export const reportRoutes = [
   // ── Dashboard ──────────────────────────────────────────────────────
@@ -138,7 +138,7 @@ export const reportRoutes = [
   }),
 
   // ── Test model connection ─────────────────────────────────────────
-  // If apiKey is empty, uses the current server config (env var default)
+  // API key is REQUIRED — no fallback to env vars
   registerApiRoute('/model-config/test', {
     method: 'POST',
     handler: async (c: any) => {
@@ -146,23 +146,27 @@ export const reportRoutes = [
         const body = await c.req.json();
         const { provider, modelName, apiKey } = body;
 
-        // If no apiKey provided, fall back to current server config
-        const currentConfig = getModelConfig();
-        const testConfig = {
-          provider: provider || currentConfig.provider,
-          modelName: modelName || currentConfig.modelName,
-          apiKey: apiKey || currentConfig.apiKey,
-        };
-
-        if (!testConfig.apiKey) {
-          return c.json({ ok: false, message: 'No API key available. Configure one or set a server environment variable.' }, 400);
+        if (!provider || !modelName) {
+          return c.json({ ok: false, message: 'Provider and model are required.' }, 400);
         }
 
-        const result = await testModelConnection(testConfig);
+        if (!apiKey) {
+          return c.json({ ok: false, message: 'API key is required. Please enter your API key.' }, 400);
+        }
+
+        const result = await testModelConnection({ provider, modelName, apiKey });
         return c.json(result);
       } catch (err: any) {
         return c.json({ ok: false, message: err.message }, 500);
       }
+    },
+  }),
+
+  // ── Model config status (quick boolean check) ────────────────
+  registerApiRoute('/model-config/status', {
+    method: 'GET',
+    handler: async (c: any) => {
+      return c.json({ configured: isModelConfigured() });
     },
   }),
 

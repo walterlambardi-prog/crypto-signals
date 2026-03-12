@@ -112,8 +112,9 @@ export function generateSettingsPageHtml(): string {
 
     <!-- ── Current Config ── -->
     <div class="current-config" id="current-config">
-      <span>Active:</span>
-      <span class="badge" id="cc-provider">—</span>
+      <span>Status:</span>
+      <span class="badge" id="cc-status" style="background:rgba(248,81,73,0.15);color:var(--red);">Not Configured</span>
+      <span class="badge" id="cc-provider" style="display:none;">—</span>
       <span class="model-name" id="cc-model">—</span>
       <span class="key-hint" id="cc-key">—</span>
     </div>
@@ -148,7 +149,7 @@ export function generateSettingsPageHtml(): string {
       <div class="btn-row">
         <button class="btn btn-primary" id="btn-save" onclick="saveConfig()">💾 Save</button>
         <button class="btn btn-secondary" id="btn-test" onclick="testConnection()">🔌 Test Connection</button>
-        <button class="btn btn-danger" id="btn-reset" onclick="resetConfig()">↺ Reset to Default</button>
+        <button class="btn btn-danger" id="btn-reset" onclick="resetConfig()">↺ Clear Configuration</button>
       </div>
 
       <div class="status-msg" id="status-msg"></div>
@@ -158,12 +159,12 @@ export function generateSettingsPageHtml(): string {
     <div class="card">
       <h2>ℹ️ How it works</h2>
       <ul style="color:var(--muted);font-size:0.85rem;padding-left:20px;line-height:1.8;">
-        <li>The model and API key are used for all <strong>agent queries</strong> and <strong>workflow executions</strong>.</li>
+        <li><strong>You must configure your own API key</strong> before workflows can run. There is no default key.</li>
         <li>Your API key is stored <strong>only in your browser</strong> (localStorage). It is <strong>never saved to disk</strong> on the server.</li>
         <li>On each page load, your browser syncs the config to <strong>server memory</strong> so workflows can use it.</li>
         <li>If the server restarts, the config is automatically re-synced from your browser on your next visit.</li>
         <li>Use <strong>Test Connection</strong> to verify your API key works before saving.</li>
-        <li>The <strong>Reset</strong> button restores the default (Google Gemini 2.5 Flash with the server's environment variable).</li>
+        <li>The <strong>Clear Configuration</strong> button removes the key from both browser and server memory. Workflows will stop working until you configure a new key.</li>
       </ul>
     </div>
 
@@ -300,10 +301,11 @@ export function generateSettingsPageHtml(): string {
     // ── Test connection ──
     async function testConnection() {
       const config = getFormConfig();
-      // If no apiKey in form, server will use its default (env var)
-      const label = config.apiKey
-        ? config.provider + '/' + config.modelName
-        : config.provider + '/' + config.modelName + ' (server default key)';
+      if (!config.apiKey) {
+        showStatus('API key is required to test the connection.', 'error');
+        return;
+      }
+      const label = config.provider + '/' + config.modelName;
 
       const btn = document.getElementById('btn-test');
       btn.disabled = true;
@@ -333,7 +335,7 @@ export function generateSettingsPageHtml(): string {
 
     // ── Reset to default ──
     async function resetConfig() {
-      if (!confirm('Reset to default configuration? (Google Gemini 2.5 Flash with server env key)')) return;
+      if (!confirm('Clear configuration? Workflows will stop working until you set a new API key.')) return;
 
       // Clear localStorage
       localStorage.removeItem('crypto-signals-model-config');
@@ -344,8 +346,8 @@ export function generateSettingsPageHtml(): string {
         await fetch(BASE + '/model-config/reset', { method: 'POST' });
       } catch {}
 
-      showStatus('Reset to defaults. Using server environment variable.', 'success');
-      loadConfig();
+      showStatus('Configuration cleared. Please configure a new API key to use workflows.', 'info');
+      setNotConfiguredUI();
     }
 
     // ── Get form values ──
