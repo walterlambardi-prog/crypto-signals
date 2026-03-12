@@ -67,7 +67,7 @@ For market overview, provide a clean table or ranked list.
 - Express market caps and volumes in readable format (e.g., $1.2T, $450B, $3.5M).
 - Respond in the same language the user uses.
 `,
-  model: 'google/gemini-2.5-pro',
+  model: 'google/gemini-2.5-flash',
   tools: {
     getCryptoPrice,
     getMarketOverview,
