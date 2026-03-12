@@ -129,6 +129,12 @@ export function generateSettingsPageHtml(): string {
           <option value="google">Google Gemini</option>
           <option value="openai">OpenAI</option>
           <option value="anthropic">Anthropic</option>
+          <option value="groq">Groq</option>
+          <option value="xai">xAI (Grok)</option>
+          <option value="mistral">Mistral</option>
+          <option value="deepseek">DeepSeek</option>
+          <option value="perplexity">Perplexity</option>
+          <option value="cohere">Cohere</option>
         </select>
       </div>
 
@@ -181,6 +187,12 @@ export function generateSettingsPageHtml(): string {
       google: 'Google: GOOGLE_GENERATIVE_AI_API_KEY',
       openai: 'OpenAI: OPENAI_API_KEY',
       anthropic: 'Anthropic: ANTHROPIC_API_KEY',
+      groq: 'Groq: GROQ_API_KEY',
+      xai: 'xAI: XAI_API_KEY',
+      mistral: 'Mistral: MISTRAL_API_KEY',
+      deepseek: 'DeepSeek: DEEPSEEK_API_KEY',
+      perplexity: 'Perplexity: PERPLEXITY_API_KEY',
+      cohere: 'Cohere: COHERE_API_KEY',
     };
 
     // ── Populate models dropdown ──
