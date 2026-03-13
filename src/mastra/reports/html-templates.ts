@@ -24,13 +24,13 @@ const CSS = `
     border-radius: 8px; padding: 28px 32px; word-wrap: break-word; line-height: 1.8; }
   .report-body p { margin: 10px 0; }
   .report-body h1, .report-body h2, .report-body h3 {
-    color: var(--accent); margin-top: 24px; margin-bottom: 10px; }
-  .report-body h1 { font-size: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
-  .report-body h2 { font-size: 1.3rem; }
-  .report-body h3 { font-size: 1.1rem; color: var(--purple); }
+    color: var(--accent); margin-bottom: 8px; }
+  .report-body h1 { font-size: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-top: 28px; }
+  .report-body h2 { font-size: 1.3rem; margin-top: 32px; }
+  .report-body h3 { font-size: 1.1rem; color: var(--purple); margin-top: 24px; }
   .report-body strong { color: var(--text); }
-  .report-body ul, .report-body ol { padding-left: 24px; margin: 12px 0; }
-  .report-body li { margin: 6px 0; line-height: 1.7; }
+  .report-body ul, .report-body ol { padding-left: 24px; margin: 8px 0; }
+  .report-body li { margin: 1px 0; line-height: 1.5; }
   .report-body code { background: rgba(110,118,129,0.2); padding: 2px 6px;
     border-radius: 4px; font-size: 0.9em; }
   .report-body blockquote { border-left: 3px solid var(--yellow); padding-left: 14px;
@@ -188,6 +188,11 @@ function markdownToHtml(text: string): string {
   html = html.replaceAll(/((<li>.*?<\/li>(<br>)?)+)/g, '<ul>$1</ul>');
   html = html.replaceAll(/<ul>(\s*<br>)*/g, '<ul>');
   html = html.replaceAll(/(<br>)*\s*<\/ul>/g, '</ul>');
+  // Clean <br> between list items
+  html = html.replaceAll('</li><br><li>', '</li><li>');
+  // Clean <br> after headings and before headings
+  html = html.replaceAll(/<\/(h[1-3])><br>/g, '</$1>');
+  html = html.replaceAll(/<br><(h[1-3])>/g, '<$1>');
 
   // ── Signal word highlighting ──
   html = html.replaceAll(/\b(STRONG_BUY|STRONG BUY)\b/g,
@@ -214,7 +219,21 @@ function markdownToHtml(text: string): string {
     html = html.replace(`%%TABLE_${i}%%`, tablePlaceholders[i]);
   }
 
-  return `<p>${html}</p>`;
+  // Wrap in <p> and clean up block elements that shouldn't be inside <p>
+  html = `<p>${html}</p>`;
+  // Remove <p> wrapping around block-level elements
+  html = html.replaceAll(/<p><(h[1-3]|ul|ol|table|blockquote|hr)/g, '<$1');
+  html = html.replaceAll(/<\/(h[1-3]|ul|ol|table|blockquote)><\/p>/g, '</$1>');
+  html = html.replaceAll('<hr></p>', '<hr>');
+  html = html.replaceAll(/<\/p><(h[1-3]|ul|ol|table|blockquote|hr)/g, '<$1');
+  html = html.replaceAll(/<\/(h[1-3]|ul|ol|table|blockquote)><p>/g, '</$1><p>');
+  html = html.replaceAll('<hr><p>', '<hr><p>');
+  // Wrap loose text after block-level closing tags in <p>
+  html = html.replaceAll(/<\/(h[1-3])>([^<])/g, '</$1><p>$2');
+  // Clean up empty <p></p>
+  html = html.replaceAll(/<p>\s*<\/p>/g, '');
+
+  return html;
 }
 
 // ─── Report Page ─────────────────────────────────────────────────────
