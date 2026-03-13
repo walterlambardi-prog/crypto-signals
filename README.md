@@ -2,17 +2,15 @@
 
 > Built with [Mastra AI](https://mastra.ai/) framework • TypeScript • 9 LLM providers • 58+ models
 
-**Live**: [https://tu-dominio.duckdns.org](https://tu-dominio.duckdns.org)
-
 ---
 
 ## What It Does
 
-Crypto Signals is a Mastra-based platform that provides AI-powered cryptocurrency analysis with a 10-indicator scoring engine, volume analysis, and market scanning. It uses real-time data from CoinGecko (prices, volumes, ATH) and the Fear & Greed Index, combined with aggressive LLM-generated reports that include specific entry/exit zones, stop-loss levels, and risk/reward ratios.
+Crypto Signals is a Mastra-based platform that provides AI-powered cryptocurrency analysis with a 21-indicator engine (16 scored + 5 contextual), volume analysis, and market scanning. It fetches real-time data from CoinGecko (prices, volumes, OHLC, ATH, global metrics) and the Fear & Greed Index, combined with aggressive LLM-generated reports that include specific entry/exit zones, stop-loss levels, and risk/reward ratios.
 
 ### Features
 
-- **Crypto Analysis Workflow** — 10-indicator scoring system (RSI, SMA 20/50/200, EMA 12/26, MACD, Bollinger, Fear & Greed, Momentum, SMA Crossover, Volume Profile) with AI-generated reports including entry/exit zones, stop-loss, and risk/reward
+- **Crypto Analysis Workflow** — 16-indicator scoring system (RSI, SMA 20/50/200, MACD, Bollinger, Stochastic, CCI, OBV, ADX, Ichimoku Cloud, VWAP, Fear & Greed, Momentum, SMA Crossover, Volume Profile) + 5 contextual indicators (ATR, Fibonacci, BTC Dominance, Total Market Cap, Market Cap Change) with AI-generated reports including entry/exit zones, stop-loss, and risk/reward
 - **Market Scan Workflow** — Scans top N coins with aggressive opportunity identification: BUY/SELL targets with entry/target/SL, sector analysis, and immediate action plans
 - **Interactive Agent** — Chat-based crypto assistant with memory (remembers conversations)
 - **HTML Reports Dashboard** — Dark-themed reports with table rendering, signal badges (BUY/SELL/HOLD highlighted), keyword coloring (BULLISH/BEARISH/OVERSOLD/OVERBOUGHT), and responsive filters
@@ -20,7 +18,7 @@ Crypto Signals is a Mastra-based platform that provides AI-powered cryptocurrenc
 - **Settings UI** — Configure LLM provider, model, and API key from the browser
 - **9 LLM Providers** — Google, OpenAI, Anthropic, Groq, xAI, Mistral, DeepSeek, Perplexity, Cohere
 - **58+ Models** — From Gemini 2.5 Pro to Claude Opus 4.6 to GPT-4.1 and more
-- **HTTPS** — SSL via Let's Encrypt + DuckDNS
+- **HTTPS** — SSL via Let's Encrypt
 
 ### Security
 
@@ -59,11 +57,14 @@ src/mastra/
 ├── index.ts                     # Mastra entrypoint — agents, workflows, storage, routes
 ├── agents/
 │   └── crypto-agent.ts          # AI agent with 4 tools + memory
+├── lib/
+│   ├── indicators.ts            # Pure TA functions: SMA, EMA, RSI, MACD, Bollinger, Stochastic, CCI, OBV, Fibonacci, ADX, ATR, Ichimoku, VWAP
+│   └── scoring.ts               # Weighted scoring engine (16 indicators → composite signal)
 ├── tools/
 │   ├── index.ts                 # Barrel exports
 │   ├── crypto-price.ts          # CoinGecko price/market data
 │   ├── crypto-market.ts         # Top N coins + global metrics
-│   ├── technical-analysis.ts    # RSI, SMA, EMA, MACD, Bollinger Bands
+│   ├── technical-analysis.ts    # Full TA suite (21 indicators via shared lib)
 │   └── crypto-sentiment.ts      # Fear & Greed Index + trending coins
 ├── workflows/
 │   ├── crypto-analysis.ts       # 3-step: fetch+TA → AI report → save HTML
@@ -132,13 +133,7 @@ Deployed on AWS EC2 with HTTPS. See [DEPLOY-AWS.md](DEPLOY-AWS.md) for the full 
 # Build for production
 npm run build
 
-# Deploy to AWS (rsync + PM2 restart)
-rsync -avz --delete --exclude='node_modules' --exclude='.env' --exclude='*.db*' \
-  .mastra/output/ -e "ssh -i ~/.ssh/crypto-signals-key.pem" \
-  ec2-user@TU_IP_PUBLICA:~/crypto-signals/.mastra/output/
-
-ssh -i ~/.ssh/crypto-signals-key.pem ec2-user@TU_IP_PUBLICA \
-  "cd ~/crypto-signals/.mastra/output && npm install && pm2 restart crypto-signals"
+# Deploy — see DEPLOY-AWS.md for full rsync + PM2 commands
 ```
 
 ---
@@ -153,7 +148,7 @@ ssh -i ~/.ssh/crypto-signals-key.pem ec2-user@TU_IP_PUBLICA \
 | Database | LibSQL (reports + agent memory) |
 | Server | Hono (via Mastra) |
 | Hosting | AWS EC2 (t3.micro) |
-| `HTTPS` | Caddy + Let's Encrypt + DuckDNS |
+| `HTTPS` | Caddy + Let's Encrypt |
 | Process Manager | PM2 |
 
 ---
@@ -164,5 +159,4 @@ ssh -i ~/.ssh/crypto-signals-key.pem ec2-user@TU_IP_PUBLICA \
 |------|-------------|
 | [API-GUIDE.md](API-GUIDE.md) | Complete API reference with curl examples |
 | [DEPLOY-AWS.md](DEPLOY-AWS.md) | Step-by-step AWS deployment guide |
-| [REVIEW.md](REVIEW.md) | Architecture review and known issues |
 | [AGENTS.md](AGENTS.md) | AI agent configuration for this repo |
