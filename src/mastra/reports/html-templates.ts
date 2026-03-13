@@ -52,6 +52,45 @@ const CSS = `
   .back-link:hover { text-decoration: underline; }
   footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border);
     color: var(--muted); font-size: 0.8rem; text-align: center; }
+
+  /* ── Raw Data Panel ── */
+  .data-panel { background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; margin-bottom: 20px; overflow: hidden; }
+  .data-panel-toggle { width: 100%; background: none; border: none; color: var(--accent);
+    padding: 14px 20px; font-size: 0.95rem; font-weight: 600; cursor: pointer;
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: inherit; }
+  .data-panel-toggle:hover { background: rgba(88,166,255,0.04); }
+  .data-panel-toggle .arrow { transition: transform 0.2s; }
+  .data-panel-toggle.open .arrow { transform: rotate(180deg); }
+  .data-panel-content { display: none; padding: 0 20px 20px; }
+  .data-panel-content.open { display: block; }
+  .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 640px) { .data-grid { grid-template-columns: 1fr; } }
+  .data-card { background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 14px 16px; }
+  .data-card h4 { font-size: 0.8rem; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.5px; margin-bottom: 10px; }
+  .data-row { display: flex; justify-content: space-between; padding: 4px 0;
+    font-size: 0.88rem; border-bottom: 1px solid rgba(48,54,61,0.5); }
+  .data-row:last-child { border-bottom: none; }
+  .data-row .label { color: var(--muted); }
+  .data-row .value { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .data-row .value.green { color: var(--green); }
+  .data-row .value.red { color: var(--red); }
+  .data-row .value.yellow { color: var(--yellow); }
+  .signal-bar { margin-top: 12px; }
+  .signal-bar-track { height: 8px; background: var(--bg); border-radius: 4px;
+    border: 1px solid var(--border); position: relative; overflow: visible; }
+  .signal-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+  .signal-bar-label { display: flex; justify-content: space-between;
+    font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
+  .indicator-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .indicator-chip { font-size: 0.75rem; padding: 3px 8px; border-radius: 6px;
+    font-weight: 500; }
+  .chip-bullish { background: rgba(63,185,80,0.12); color: var(--green); }
+  .chip-bearish { background: rgba(248,81,73,0.12); color: var(--red); }
+  .chip-neutral { background: rgba(110,118,129,0.12); color: var(--muted); }
 `;
 
 const DASHBOARD_CSS = `
@@ -188,6 +227,170 @@ export interface ReportData {
   createdAt: string;
   coinId?: string;
   modelLabel?: string;
+  rawData?: string;
+}
+
+// ─── Raw Data Panel ──────────────────────────────────────────────────
+
+function generateRawDataPanel(rawDataJson: string): string {
+  try {
+    const d = JSON.parse(rawDataJson);
+
+    const fmt = (v: number | null | undefined, prefix = '$') =>
+      v === null || v === undefined ? 'N/A' : `${prefix}${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const fmtPct = (v: number | null | undefined) =>
+      v === null || v === undefined ? 'N/A' : `${v > 0 ? '+' : ''}${Number(v).toFixed(2)}%`;
+    const fmtNum = (v: number | null | undefined) =>
+      v === null || v === undefined ? 'N/A' : Number(v).toFixed(2);
+    const colorClass = (v: number | null | undefined) =>
+      v === null || v === undefined ? '' : v > 0 ? 'green' : v < 0 ? 'red' : '';
+
+    // Signal bar
+    const score = d.signalScore ?? 0;
+    const barPct = Math.round(((score + 100) / 200) * 100); // map -100..100 → 0..100
+    const barColor = score >= 15 ? 'var(--green)' : score <= -15 ? 'var(--red)' : 'var(--yellow)';
+    const signalLabel = d.overallSignal ?? 'N/A';
+
+    // Indicator breakdown chips
+    const breakdownStr: string = d.indicatorBreakdown ?? '';
+    const chips = breakdownStr.split(' | ').filter(Boolean).map((item: string) => {
+      const chipClass = item.includes('BULLISH') ? 'chip-bullish'
+        : item.includes('BEARISH') ? 'chip-bearish' : 'chip-neutral';
+      return `<span class="indicator-chip ${chipClass}">${escapeHtml(item)}</span>`;
+    }).join('');
+
+    return `
+    <div class="data-panel">
+      <button class="data-panel-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open');">
+        📐 Quantitative Data (source of the signal score)
+        <span class="arrow">▼</span>
+      </button>
+      <div class="data-panel-content">
+        <!-- Overall Signal -->
+        <div style="margin-bottom: 16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:1.1rem;font-weight:700;">Signal: <span style="color:${barColor}">${escapeHtml(signalLabel)}</span></span>
+            <span style="font-size:1.3rem;font-weight:700;color:${barColor}">${score > 0 ? '+' : ''}${score}/100</span>
+          </div>
+          <div class="signal-bar">
+            <div class="signal-bar-track">
+              <div class="signal-bar-fill" style="width:${barPct}%;background:${barColor};"></div>
+            </div>
+            <div class="signal-bar-label"><span>-100 (Strong Sell)</span><span>0</span><span>+100 (Strong Buy)</span></div>
+          </div>
+          <p style="color:var(--muted);font-size:0.82rem;margin-top:6px;">${escapeHtml(d.signalSummary ?? '')}</p>
+        </div>
+
+        <div class="data-grid">
+          <!-- Market Data -->
+          <div class="data-card">
+            <h4>📊 Market Data</h4>
+            <div class="data-row"><span class="label">Price</span><span class="value">${fmt(d.currentPrice)}</span></div>
+            <div class="data-row"><span class="label">24h Change</span><span class="value ${colorClass(d.priceChangePercentage24h)}">${fmtPct(d.priceChangePercentage24h)}</span></div>
+            <div class="data-row"><span class="label">24h High</span><span class="value">${fmt(d.high24h)}</span></div>
+            <div class="data-row"><span class="label">24h Low</span><span class="value">${fmt(d.low24h)}</span></div>
+            <div class="data-row"><span class="label">Market Cap</span><span class="value">${d.marketCap ? '$' + (d.marketCap / 1e9).toFixed(2) + 'B' : 'N/A'}</span></div>
+            <div class="data-row"><span class="label">Volume 24h</span><span class="value">${d.volume24h ? '$' + (d.volume24h / 1e9).toFixed(2) + 'B' : 'N/A'}</span></div>
+            ${d.volumeRatio !== null && d.volumeRatio !== undefined ? `<div class="data-row"><span class="label">Volume Ratio (vs 30d)</span><span class="value ${d.volumeRatio >= 1.5 ? 'green' : d.volumeRatio <= 0.5 ? 'red' : ''}">${d.volumeRatio}x</span></div>` : ''}
+            ${d.athChangePercentage !== null && d.athChangePercentage !== undefined ? `<div class="data-row"><span class="label">From ATH</span><span class="value red">${fmtPct(d.athChangePercentage)}</span></div>` : ''}
+          </div>
+
+          <!-- Technical Indicators -->
+          <div class="data-card">
+            <h4>📈 Technical Indicators</h4>
+            <div class="data-row"><span class="label">RSI (14)</span><span class="value ${d.rsi !== null ? (d.rsi < 30 ? 'green' : d.rsi > 70 ? 'red' : '') : ''}">${fmtNum(d.rsi)}</span></div>
+            <div class="data-row"><span class="label">SMA 20</span><span class="value">${fmt(d.sma20)}</span></div>
+            <div class="data-row"><span class="label">SMA 50</span><span class="value">${fmt(d.sma50)}</span></div>
+            <div class="data-row"><span class="label">SMA 200</span><span class="value">${fmt(d.sma200)}</span></div>
+            <div class="data-row"><span class="label">EMA 12</span><span class="value">${fmt(d.ema12)}</span></div>
+            <div class="data-row"><span class="label">EMA 26</span><span class="value">${fmt(d.ema26)}</span></div>
+            <div class="data-row"><span class="label">MACD Line</span><span class="value ${colorClass(d.macdLine)}">${fmtNum(d.macdLine)}</span></div>
+            <div class="data-row"><span class="label">MACD Signal</span><span class="value">${fmtNum(d.macdSignal)}</span></div>
+            <div class="data-row"><span class="label">MACD Histogram</span><span class="value ${colorClass(d.macdHistogram)}">${fmtNum(d.macdHistogram)}</span></div>
+            <div class="data-row"><span class="label">Bollinger Upper</span><span class="value">${fmt(d.bollingerUpper)}</span></div>
+            <div class="data-row"><span class="label">Bollinger Middle</span><span class="value">${fmt(d.bollingerMiddle)}</span></div>
+            <div class="data-row"><span class="label">Bollinger Lower</span><span class="value">${fmt(d.bollingerLower)}</span></div>
+            <div class="data-row"><span class="label">Stochastic %K</span><span class="value ${d.stochK != null ? (d.stochK < 20 ? 'green' : d.stochK > 80 ? 'red' : '') : ''}">${fmtNum(d.stochK)}</span></div>
+            <div class="data-row"><span class="label">Stochastic %D</span><span class="value">${fmtNum(d.stochD)}</span></div>
+            <div class="data-row"><span class="label">CCI (20)</span><span class="value ${d.cci != null ? (d.cci < -100 ? 'green' : d.cci > 100 ? 'red' : '') : ''}">${fmtNum(d.cci)}</span></div>
+            <div class="data-row"><span class="label">OBV Trend</span><span class="value ${d.obvTrend === 'RISING' ? 'green' : d.obvTrend === 'FALLING' ? 'red' : ''}">${d.obvTrend ?? 'N/A'}</span></div>
+            <div class="data-row"><span class="label">Support</span><span class="value green">${fmt(d.supportLevel)}</span></div>
+            <div class="data-row"><span class="label">Resistance</span><span class="value red">${fmt(d.resistanceLevel)}</span></div>
+          </div>
+
+          <!-- Fibonacci Levels -->
+          ${d.fibHigh != null ? `
+          <div class="data-card">
+            <h4>📐 Fibonacci (${d.fibTrend === 'UP' ? 'Uptrend' : 'Downtrend'})</h4>
+            <div class="data-row"><span class="label">Swing High</span><span class="value">${fmt(d.fibHigh)}</span></div>
+            <div class="data-row"><span class="label">Swing Low</span><span class="value">${fmt(d.fibLow)}</span></div>
+            <div class="data-row"><span class="label">23.6%</span><span class="value">${fmt(d.fib236)}</span></div>
+            <div class="data-row"><span class="label">38.2%</span><span class="value">${fmt(d.fib382)}</span></div>
+            <div class="data-row"><span class="label">50.0%</span><span class="value">${fmt(d.fib500)}</span></div>
+            <div class="data-row"><span class="label">61.8%</span><span class="value yellow">${fmt(d.fib618)}</span></div>
+            <div class="data-row"><span class="label">78.6%</span><span class="value">${fmt(d.fib786)}</span></div>
+          </div>` : ''}
+
+          <!-- ADX / ATR (Phase 2) -->
+          ${d.adx != null ? `
+          <div class="data-card">
+            <h4>📊 Trend Strength (ADX/ATR)</h4>
+            <div class="data-row"><span class="label">ADX (14)</span><span class="value ${d.adx >= 25 ? (d.adxPlusDI > d.adxMinusDI ? 'green' : 'red') : ''}">${fmtNum(d.adx)}</span></div>
+            <div class="data-row"><span class="label">+DI</span><span class="value green">${fmtNum(d.adxPlusDI)}</span></div>
+            <div class="data-row"><span class="label">-DI</span><span class="value red">${fmtNum(d.adxMinusDI)}</span></div>
+            <div class="data-row"><span class="label">Trend</span><span class="value ${d.adx >= 25 ? (d.adxPlusDI > d.adxMinusDI ? 'green' : 'red') : 'yellow'}">${d.adx >= 40 ? 'Strong' : d.adx >= 25 ? 'Moderate' : 'Weak/None'}</span></div>
+            ${d.atr != null ? `<div class="data-row"><span class="label">ATR (14)</span><span class="value">${fmt(d.atr)}</span></div>` : ''}
+          </div>` : ''}
+
+          <!-- Ichimoku Cloud (Phase 2) -->
+          ${d.ichimokuSignal != null ? `
+          <div class="data-card">
+            <h4>☁️ Ichimoku Cloud</h4>
+            <div class="data-row"><span class="label">Tenkan (Conv.)</span><span class="value">${fmt(d.ichimokuTenkan)}</span></div>
+            <div class="data-row"><span class="label">Kijun (Base)</span><span class="value">${fmt(d.ichimokuKijun)}</span></div>
+            <div class="data-row"><span class="label">Senkou A</span><span class="value">${fmt(d.ichimokuSenkouA)}</span></div>
+            <div class="data-row"><span class="label">Senkou B</span><span class="value">${fmt(d.ichimokuSenkouB)}</span></div>
+            <div class="data-row"><span class="label">Cloud Position</span><span class="value ${d.ichimokuSignal === 'ABOVE_CLOUD' ? 'green' : d.ichimokuSignal === 'BELOW_CLOUD' ? 'red' : 'yellow'}">${d.ichimokuSignal === 'ABOVE_CLOUD' ? 'Above ☁️🟢' : d.ichimokuSignal === 'BELOW_CLOUD' ? 'Below ☁️🔴' : 'Inside ☁️🟡'}</span></div>
+            <div class="data-row"><span class="label">TK Cross</span><span class="value ${d.ichimokuTkCross === 'BULLISH' ? 'green' : d.ichimokuTkCross === 'BEARISH' ? 'red' : ''}">${d.ichimokuTkCross ?? 'N/A'}</span></div>
+          </div>` : ''}
+
+          <!-- VWAP (Phase 2) -->
+          ${d.vwap != null ? `
+          <div class="data-card">
+            <h4>📏 VWAP</h4>
+            <div class="data-row"><span class="label">VWAP</span><span class="value">${fmt(d.vwap)}</span></div>
+            <div class="data-row"><span class="label">Price vs VWAP</span><span class="value ${d.currentPrice > d.vwap ? 'green' : 'red'}">${d.currentPrice > d.vwap ? 'Above 🟢' : 'Below 🔴'} (${fmtPct(((d.currentPrice - d.vwap) / d.vwap) * 100)})</span></div>
+          </div>` : ''}
+
+          <!-- Sentiment & Market Context -->
+          <div class="data-card">
+            <h4>🧠 Sentiment & Market</h4>
+            <div class="data-row"><span class="label">Fear & Greed Index</span><span class="value ${d.fearGreedIndex <= 25 ? 'red' : d.fearGreedIndex >= 75 ? 'green' : 'yellow'}">${d.fearGreedIndex ?? 'N/A'}/100</span></div>
+            <div class="data-row"><span class="label">Classification</span><span class="value">${escapeHtml(d.fearGreedLabel ?? 'N/A')}</span></div>
+            ${d.btcDominance != null ? `<div class="data-row"><span class="label">BTC Dominance</span><span class="value ${d.btcDominance >= 55 ? 'yellow' : d.btcDominance <= 40 ? 'green' : ''}">${d.btcDominance}%</span></div>` : ''}
+            ${d.totalMarketCap != null ? `<div class="data-row"><span class="label">Total Market Cap</span><span class="value">$${(d.totalMarketCap / 1e12).toFixed(2)}T</span></div>` : ''}
+            ${d.marketCapChange24h != null ? `<div class="data-row"><span class="label">Market Cap 24h</span><span class="value ${d.marketCapChange24h > 0 ? 'green' : d.marketCapChange24h < 0 ? 'red' : ''}">${d.marketCapChange24h > 0 ? '+' : ''}${d.marketCapChange24h}%</span></div>` : ''}
+          </div>
+
+          <!-- Key Levels -->
+          <div class="data-card">
+            <h4>🔑 Signal Scoring</h4>
+            <div class="data-row"><span class="label">Signal</span><span class="value" style="color:${barColor}">${escapeHtml(signalLabel)}</span></div>
+            <div class="data-row"><span class="label">Score</span><span class="value" style="color:${barColor}">${score > 0 ? '+' : ''}${score}/100</span></div>
+          </div>
+        </div>
+
+        <!-- Indicator Breakdown -->
+        ${chips ? `
+        <div style="margin-top: 16px;">
+          <h4 style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Indicator Breakdown</h4>
+          <div class="indicator-chips">${chips}</div>
+        </div>` : ''}
+      </div>
+    </div>`;
+  } catch {
+    return '';
+  }
 }
 
 export function generateReportHtml(data: ReportData): string {
@@ -197,6 +400,8 @@ export function generateReportHtml(data: ReportData): string {
     dateStyle: 'medium',
     timeStyle: 'short',
   });
+
+  const rawDataHtml = data.rawData ? generateRawDataPanel(data.rawData) : '';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -216,6 +421,7 @@ export function generateReportHtml(data: ReportData): string {
       </div>
       <span class="badge ${badgeClass}">${badgeLabel}</span>
     </header>
+    ${rawDataHtml}
     <div class="report-body">
       ${markdownToHtml(data.report)}
     </div>

@@ -25,15 +25,18 @@ export async function initReportsTable(): Promise<void> {
       report TEXT NOT NULL,
       coin_id TEXT,
       created_at TEXT NOT NULL,
-      model_label TEXT
+      model_label TEXT,
+      raw_data TEXT
     )
   `);
 
-  // Migration: add model_label column if the table was created before it existed
-  try {
-    await client.execute(`ALTER TABLE reports ADD COLUMN model_label TEXT`);
-  } catch {
-    // Column already exists – ignore the error
+  // Migration: add columns if the table was created before they existed
+  for (const col of ['model_label TEXT', 'raw_data TEXT']) {
+    try {
+      await client.execute(`ALTER TABLE reports ADD COLUMN ${col}`);
+    } catch {
+      // Column already exists – ignore the error
+    }
   }
 }
 
@@ -42,9 +45,9 @@ export async function saveReport(data: ReportData): Promise<string> {
   await initReportsTable();
   const client = getDb();
   await client.execute({
-    sql: `INSERT OR REPLACE INTO reports (id, type, title, report, coin_id, created_at, model_label)
-          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    args: [data.id, data.type, data.title, data.report, data.coinId ?? null, data.createdAt, data.modelLabel ?? null],
+    sql: `INSERT OR REPLACE INTO reports (id, type, title, report, coin_id, created_at, model_label, raw_data)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [data.id, data.type, data.title, data.report, data.coinId ?? null, data.createdAt, data.modelLabel ?? null, data.rawData ?? null],
   });
   return data.id;
 }
@@ -74,6 +77,7 @@ export async function listReports(filter?: 'analysis' | 'scan'): Promise<ReportD
     coinId: (row['coin_id'] as string) || undefined,
     createdAt: row['created_at'] as string,
     modelLabel: (row['model_label'] as string) || undefined,
+    rawData: (row['raw_data'] as string) || undefined,
   }));
 }
 
@@ -98,6 +102,7 @@ export async function getReport(id: string): Promise<ReportData | null> {
     coinId: (row['coin_id'] as string) || undefined,
     createdAt: row['created_at'] as string,
     modelLabel: (row['model_label'] as string) || undefined,
+    rawData: (row['raw_data'] as string) || undefined,
   };
 }
 
@@ -122,6 +127,7 @@ export async function getLatestReportForCoin(coinId: string): Promise<ReportData
     coinId: (row['coin_id'] as string) || undefined,
     createdAt: row['created_at'] as string,
     modelLabel: (row['model_label'] as string) || undefined,
+    rawData: (row['raw_data'] as string) || undefined,
   };
 }
 

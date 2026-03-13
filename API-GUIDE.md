@@ -54,10 +54,26 @@ curl -s -X POST $BASE/workflows/execute/analysis \
           "overallSignal": "HOLD",
           "signalScore": -9,
           "indicatorBreakdown": "RSI: NEUTRAL (+5) | SMA (20): BULLISH (+15) | ...",
+          "rsi": 53.81,
+          "sma20": 69800, "sma50": 71200, "sma200": 68500,
+          "macdLine": 120.5, "macdSignal": -620.4, "macdHistogram": 740.9,
+          "bollingerUpper": 74000, "bollingerMiddle": 70000, "bollingerLower": 66000,
+          "ema12": 70100, "ema26": 69800,
           "volumeRatio": 1.23,
-          "ema12": 70100,
-          "ema26": 69800,
-          "athChangePercentage": -3.5
+          "athChangePercentage": -3.5,
+          "stochK": 45.2, "stochD": 42.8,
+          "cci": -15.3,
+          "obvTrend": "RISING",
+          "fibHigh": 73800, "fibLow": 64000, "fibTrend": "DOWN",
+          "fib236": 66312, "fib382": 67744, "fib500": 68900, "fib618": 70056, "fib786": 71704,
+          "adx": 28.5, "adxPlusDI": 22.1, "adxMinusDI": 18.7,
+          "atr": 2150.3,
+          "ichimokuTenkan": 70200, "ichimokuKijun": 69500,
+          "ichimokuSenkouA": 69850, "ichimokuSenkouB": 68100,
+          "ichimokuSignal": "ABOVE_CLOUD", "ichimokuTkCross": "BULLISH",
+          "vwap": 69750,
+          "btcDominance": 52.3, "totalMarketCap": 2450000000000, "marketCapChange24h": -1.2,
+          "fearGreedIndex": 35, "fearGreedLabel": "Fear"
         }
       },
       "save-html-report": {
@@ -536,3 +552,51 @@ Los workflows se identifican por su **name** (no por la key de código):
 5. **Timeout**: Los workflows pueden tardar 30-60 segundos. Usa `-m 120` en curl para un timeout de 2 minutos.
 
 6. **Model Label**: Cada reporte registra el modelo utilizado (`provider/modelName`) para trazabilidad.
+
+---
+
+## 9. Technical Indicators Reference
+
+El sistema calcula 21 indicadores técnicos en cada análisis. 16 contribuyen al composite signal score, 5 son contextuales.
+
+### Indicators in `fetch-and-analyze` Output
+
+| Campo | Indicador | Scored | Peso |
+|-------|-----------|--------|------|
+| `rsi` | RSI (14) | ✅ | 2.0 |
+| `sma20`, `sma50`, `sma200` | Simple Moving Averages | ✅ | 1.0 / 1.5 / 2.0 |
+| `ema12`, `ema26` | Exponential Moving Averages | ❌ | — |
+| `macdLine`, `macdSignal`, `macdHistogram` | MACD (12,26,9) | ✅ | 2.0 |
+| `bollingerUpper`, `bollingerMiddle`, `bollingerLower` | Bollinger Bands (20,2) | ✅ | 1.5 |
+| `stochK`, `stochD` | Stochastic (14,3) con OHLC | ✅ | 1.5 |
+| `cci` | CCI (20) con Typical Price OHLC | ✅ | 1.0 |
+| `obvTrend` | On-Balance Volume trend | ✅ | 1.5 |
+| `adx`, `adxPlusDI`, `adxMinusDI` | ADX (14) — trend strength | ✅ | 1.5 |
+| `atr` | ATR (14) — volatility | ❌ | — |
+| `ichimokuTenkan`, `ichimokuKijun`, `ichimokuSenkouA/B`, `ichimokuSignal`, `ichimokuTkCross` | Ichimoku Cloud | ✅ | 2.0 |
+| `vwap` | Volume-Weighted Avg Price | ✅ | 1.0 |
+| `fearGreedIndex`, `fearGreedLabel` | Fear & Greed (contrarian) | ✅ | 1.5 |
+| `volumeRatio` | Volume vs 30d average | ✅ | 1.0 |
+| `fibHigh`, `fibLow`, `fib236`–`fib786`, `fibTrend` | Fibonacci Retracements | ❌ | — |
+| `btcDominance` | BTC market dominance % | ❌ | — |
+| `totalMarketCap`, `marketCapChange24h` | Global market context | ❌ | — |
+
+### Signal Score Interpretation
+
+| Score Range | Signal | Meaning |
+|-------------|--------|---------|
+| +40 to +100 | `STRONG_BUY` | Most indicators strongly bullish |
+| +15 to +39 | `BUY` | Majority bullish |
+| -14 to +14 | `HOLD` | Mixed/neutral signals |
+| -39 to -15 | `SELL` | Majority bearish |
+| -100 to -40 | `STRONG_SELL` | Most indicators strongly bearish |
+
+### Data Sources
+
+| API | Endpoint | Data |
+|-----|----------|------|
+| CoinGecko | `/coins/markets` | Price, market cap, volume, ATH |
+| CoinGecko | `/coins/{id}/market_chart?days=200` | 200-day prices + volumes |
+| CoinGecko | `/coins/{id}/ohlc?days=90` | 90-day OHLC candles |
+| CoinGecko | `/global` | BTC dominance, total market cap |
+| Alternative.me | `/fng` | Fear & Greed Index |
