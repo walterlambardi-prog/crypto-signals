@@ -14,14 +14,12 @@
 4. [Crear Security Group (firewall)](#4-crear-security-group)
 5. [Lanzar Instancia EC2](#5-lanzar-instancia-ec2)
 6. [Conectarte por SSH](#6-conectarte-por-ssh)
-7. [Instalar Node.js en el Servidor](#7-instalar-nodejs-en-el-servidor)
-8. [Subir el Proyecto](#8-subir-el-proyecto)
-9. [Configurar Variables de Entorno](#9-configurar-variables-de-entorno)
-10. [Build y Arrancar](#10-build-y-arrancar)
-11. [Mantener el Proceso Vivo con PM2](#11-mantener-el-proceso-vivo-con-pm2)
-12. [Verificar que Funciona](#12-verificar-que-funciona)
-13. [Tips y Mantenimiento](#13-tips-y-mantenimiento)
-14. [Troubleshooting](#14-troubleshooting)
+7. [Instalar Node.js y PM2 en el Servidor](#7-instalar-nodejs-y-pm2-en-el-servidor)
+8. [Deploy Inicial (manual)](#8-deploy-inicial-manual)
+9. [GitHub Actions — CI/CD Automático](#9-github-actions--cicd-automático)
+10. [Verificar que Funciona](#10-verificar-que-funciona)
+11. [Tips y Mantenimiento](#11-tips-y-mantenimiento)
+12. [Troubleshooting](#12-troubleshooting)
 
 ---
 
@@ -34,8 +32,9 @@
 - [ ] Un repositorio Git (GitHub/GitLab/CodeCommit) — o podés subir con SCP
 
 ### Datos que vas a necesitar:
-- Tu **API key de Google** (`GOOGLE_GENERATIVE_AI_API_KEY`)
 - Tu **login de AWS** (URL de la consola, usuario y contraseña)
+
+> **Nota**: No necesitás API keys de LLM para el deploy. Cada usuario configura su propio provider, modelo y API key desde `/settings` en el browser.
 
 ---
 
@@ -105,12 +104,12 @@ El Security Group es el firewall del servidor. Define qué puertos están abiert
 
    | Type | Port Range | Source | Description |
    |------|-----------|--------|-------------|
-   | SSH | 22 | My IP | Acceso SSH desde mi IP |
+   | SSH | 22 | 0.0.0.0/0 | Acceso SSH (protegido por key pair) |
    | Custom TCP | 4111 | 0.0.0.0/0 | Puerto de la app (público) |
    | Custom TCP | 4111 | ::/0 | Puerto de la app (IPv6) |
 
-   > **"My IP"** se autocompleta con tu IP actual. Si tu IP cambia (WiFi diferente),
-   > vas a tener que actualizar esta regla.
+   > **SSH abierto a 0.0.0.0/0**: Es seguro porque el acceso requiere el archivo `.pem`.
+   > Esto permite que GitHub Actions (IP dinámica) pueda hacer deploy automáticamente.
 
 5. **Outbound rules**: Dejá la regla default (All traffic → 0.0.0.0/0)
 6. Click **"Create security group"**
@@ -203,9 +202,9 @@ ssh -i ~/.ssh/crypto-signals-key.pem ec2-user@52.14.123.45
 
 ---
 
-## 7. Instalar Node.js en el Servidor
+## 7. Instalar Node.js y PM2 en el Servidor
 
-El servidor viene "vacío". Necesitás instalar Node.js.
+El servidor viene "vacío". Necesitás instalar Node.js y PM2.
 
 ### Ejecutá estos comandos en el servidor (SSH):
 
@@ -222,195 +221,184 @@ nvm install 22
 # Verificar
 node --version   # Debe mostrar v22.x.x
 npm --version    # Debe mostrar 10.x.x
-```
 
-### Instalar Git (para clonar el repo):
-
-```bash
-sudo dnf install -y git
+# Instalar PM2 (process manager)
+npm install -g pm2
 ```
 
 ---
 
-## 8. Subir el Proyecto
+## 8. Deploy Inicial (manual)
 
-Tenés dos opciones para subir el código al servidor:
+Este paso se hace **una sola vez** para la primera puesta en marcha. Los deploys posteriores serán automáticos via GitHub Actions.
 
-### Opción A — Con Git (recomendado) 🟢
+> **Importante**: El build se hace en tu máquina local (no en el servidor). El t3.micro tiene solo 1GB de RAM y el build puede fallar por falta de memoria.
 
-Si tu proyecto está en GitHub/GitLab:
-
-```bash
-# En el servidor (SSH)
-cd ~
-git clone https://github.com/TU_USUARIO/crypto-signals.git
-cd crypto-signals
-npm ci
-```
-
-> Si es un repo privado, vas a necesitar un Personal Access Token.
-> En GitHub: Settings → Developer settings → Personal access tokens → Generate new token
-
-### Opción B — Con SCP (sin Git)
-
-Desde tu Mac local (NO desde SSH, abrí otra terminal):
+### Desde tu Mac local:
 
 ```bash
-# Desde tu máquina local, subir todo el proyecto excepto node_modules
 cd /ruta/a/tu/proyecto
-rsync -avz --exclude 'node_modules' --exclude '.mastra' --exclude '*.db' \
-  -e "ssh -i ~/.ssh/crypto-signals-key.pem" \
-  . ec2-user@TU_IP_PUBLICA:~/crypto-signals/
-```
 
-Después, en el servidor:
-```bash
-cd ~/crypto-signals
-npm ci
-```
-
----
-
-## 9. Configurar Variables de Entorno
-
-### En el servidor (SSH):
-
-```bash
-cd ~/crypto-signals
-
-# Crear archivo .env
-cat > .env << 'EOF'
-GOOGLE_GENERATIVE_AI_API_KEY=tu-api-key-de-google-aqui
-EOF
-```
-
-> Reemplazá `tu-api-key-de-google-aqui` con tu API key real.
-
-### Verificar que el archivo se creó:
-
-```bash
-cat .env
-# Debe mostrar: GOOGLE_GENERATIVE_AI_API_KEY=sk-xxxxxxx...
-```
-
-> ⚠️ **NUNCA subas el archivo `.env` a Git.** Verificá que `.gitignore` lo incluye.
-
----
-
-## 10. Build y Arrancar
-
-### En el servidor (SSH):
-
-```bash
-cd ~/crypto-signals
-
-# Build de producción
+# Build de producción (genera .mastra/output/)
 npm run build
 
-# Probar que arranca
-npm start
+# Subir SOLO el build output al servidor
+rsync -avz \
+  -e "ssh -i ~/.ssh/crypto-signals-key.pem" \
+  .mastra/output/ \
+  ec2-user@TU_IP_PUBLICA:~/crypto-signals/
 ```
 
-Si ves algo como:
-```
-Mastra server listening on port 4111
+### En el servidor (SSH):
+
+```bash
+cd ~/crypto-signals
+
+# Instalar solo dependencias de producción
+npm install --omit=dev
+
+# Iniciar con PM2 (con --cwd explícito para que las DBs se creen aquí)
+pm2 start index.mjs --name crypto-signals --cwd ~/crypto-signals
+
+# Verificar que está corriendo
+pm2 status
+
+# Configurar auto-inicio al reiniciar el servidor
+pm2 save
+pm2 startup
 ```
 
-¡Funciona! Probá acceder desde tu navegador:
+> El comando `pm2 startup` muestra un comando que tenés que copiar y ejecutar. Ejemplo:
+> ```bash
+> sudo env PATH=$PATH:/home/ec2-user/.nvm/versions/node/v22.x.x/bin pm2 startup systemd -u ec2-user --hp /home/ec2-user
+> ```
+
+### Verificar:
 
 ```
 http://TU_IP_PUBLICA:4111/reports
 ```
 
-Presioná `Ctrl+C` para detener (lo vamos a configurar con PM2 para que corra permanente).
+Si ves el dashboard, el deploy inicial está completo. Ahora configurá GitHub Actions para que los próximos deploys sean automáticos.
 
 ---
 
-## 11. Mantener el Proceso Vivo con PM2
+## 9. GitHub Actions — CI/CD Automático
 
-PM2 es un process manager que mantiene tu app corriendo aunque cierres SSH, y la reinicia si se cae.
+Con GitHub Actions, cada push/merge a `main` hace deploy automáticamente:
 
-### Instalar PM2:
+```
+push a main → build en GitHub (7GB RAM) → rsync output al EC2 → npm install → pm2 restart → health check
+```
+
+### 9.1. Configurar GitHub Secrets
+
+En tu repo de GitHub: **Settings → Secrets and variables → Actions → New repository secret**
+
+Crear estos 3 secrets:
+
+| Secret | Valor |
+|--------|-------|
+| `EC2_SSH_KEY` | Contenido completo del archivo `~/.ssh/crypto-signals-key.pem` |
+| `EC2_HOST` | La IP pública de tu instancia EC2 (ej: `52.14.123.45`) |
+| `EC2_USER` | `ec2-user` |
+
+#### Para copiar el contenido del .pem:
 
 ```bash
-npm install -g pm2
+cat ~/.ssh/crypto-signals-key.pem | pbcopy
 ```
 
-### Iniciar la app con PM2:
+Pegá ese contenido como valor del secret `EC2_SSH_KEY`.
+
+### 9.2. El Workflow
+
+El archivo `.github/workflows/deploy.yml` ya está incluido en el repo. Hace lo siguiente:
+
+1. **Checkout** del código
+2. **Setup Node.js 22** con cache de npm
+3. **`npm ci`** — instala dependencias
+4. **`npm run build`** — genera `.mastra/output/` (en un runner con 7GB RAM, sin riesgo de OOM)
+5. **rsync** — sube solo `.mastra/output/` al EC2 (excluye DBs para no perder datos)
+6. **`npm install --omit=dev`** — instala deps de producción en el servidor
+7. **PM2 restart** — reinicia la app (o la inicia si es la primera vez)
+8. **Health check** — verifica HTTP 200 en `/reports`
+
+### 9.3. Probar el deploy
+
+Hacé un push a main:
 
 ```bash
-cd ~/crypto-signals
-
-# Iniciar el servidor de Mastra
-pm2 start .mastra/output/index.mjs --name crypto-signals
-
-# Verificar que está corriendo
-pm2 status
+git add . && git commit -m "test: CI/CD deploy" && git push origin main
 ```
 
-Deberías ver:
-```
-┌─────┬────────────────────┬──────┬──────┬───────────┬──────────┐
-│ id  │ name               │ mode │ pid  │ status    │ cpu      │
-├─────┼────────────────────┼──────┼──────┼───────────┼──────────┤
-│ 0   │ crypto-signals     │ fork │ 1234 │ online    │ 0%       │
-└─────┴────────────────────┴──────┴──────┴───────────┴──────────┘
-```
+Revisá el progreso en: **GitHub → tu repo → Actions**
 
-### Configurar auto-inicio al reiniciar el servidor:
+### 9.4. Deploy manual desde GitHub
+
+Si querés re-ejecutar el último deploy sin hacer push:
+
+1. GitHub → **Actions** → click en el último workflow run
+2. Click **"Re-run all jobs"**
+
+### Comandos útiles de PM2 (en el servidor via SSH):
 
 ```bash
-pm2 save
-pm2 startup
-```
-
-> Esto muestra un comando que tenés que copiar y ejecutar. Ejemplo:
-> ```bash
-> sudo env PATH=$PATH:/home/ec2-user/.nvm/versions/node/v22.x.x/bin pm2 startup systemd -u ec2-user --hp /home/ec2-user
-> ```
-> Copiá exactamente lo que te muestre y ejecutalo.
-
-### Comandos útiles de PM2:
-
-```bash
-pm2 logs crypto-signals     # Ver logs en tiempo real
+pm2 logs crypto-signals            # Ver logs en tiempo real
 pm2 logs crypto-signals --lines 100  # Últimas 100 líneas
-pm2 restart crypto-signals  # Reiniciar la app
-pm2 stop crypto-signals     # Detener la app
-pm2 delete crypto-signals   # Eliminar del PM2
-pm2 monit                   # Monitor en tiempo real
+pm2 restart crypto-signals         # Reiniciar la app
+pm2 stop crypto-signals            # Detener la app
+pm2 delete crypto-signals          # Eliminar del PM2
+pm2 monit                          # Monitor en tiempo real
 ```
 
 ---
 
-## 12. Verificar que Funciona
+## 10. Verificar que Funciona
 
 ### Desde tu navegador:
 
 1. **Dashboard de reportes**: `http://TU_IP_PUBLICA:4111/reports`
-2. **Mastra Studio**: `http://TU_IP_PUBLICA:4111`
+2. **Workflows UI**: `http://TU_IP_PUBLICA:4111/workflows`
+3. **Settings**: `http://TU_IP_PUBLICA:4111/settings`
 
-### Probar un workflow:
+### Configurar y probar:
 
-Desde tu Mac (o cualquier máquina):
+1. Abrí `http://TU_IP_PUBLICA:4111/settings`
+2. Seleccioná un provider y modelo (ej: Google → Gemini 2.5 Flash)
+3. Ingresá tu API key y hacé click en **Save & Apply**
+4. Andá a `http://TU_IP_PUBLICA:4111/workflows`
+5. Ejecutá un análisis de Bitcoin
+
+### Probar con curl:
 
 ```bash
-# Ejecutar análisis de Bitcoin
-curl -X POST http://TU_IP_PUBLICA:4111/api/workflows/crypto-analysis-workflow/start \
+curl -s -X POST http://TU_IP_PUBLICA:4111/workflows/execute/analysis \
   -H "Content-Type: application/json" \
-  -d '{"inputData": {"coinId": "bitcoin"}}'
-
-# Ejecutar market scan
-curl -X POST http://TU_IP_PUBLICA:4111/api/workflows/market-scan-workflow/start \
-  -H "Content-Type: application/json" \
-  -d '{"inputData": {}}'
+  -d '{
+    "coinId": "bitcoin",
+    "provider": "google",
+    "modelName": "gemini-2.5-flash",
+    "apiKey": "tu-api-key"
+  }'
 ```
 
-Después revisá los reportes en: `http://TU_IP_PUBLICA:4111/reports`
+```bash
+curl -s -X POST http://TU_IP_PUBLICA:4111/workflows/execute/scan \
+  -H "Content-Type: application/json" \
+  -d '{
+    "limit": 10,
+    "provider": "google",
+    "modelName": "gemini-2.5-flash",
+    "apiKey": "tu-api-key"
+  }'
+```
+
+> **Nota**: Cada request de workflow requiere `provider`, `modelName` y `apiKey`. No hay configuración global en el servidor — cada usuario usa su propia key.
 
 ---
 
-## 13. Tips y Mantenimiento
+## 11. Tips y Mantenimiento
 
 ### IP Fija (Elastic IP) — Para que la IP no cambie
 
@@ -420,17 +408,7 @@ Después revisá los reportes en: `http://TU_IP_PUBLICA:4111/reports`
 4. Seleccioná tu instancia `crypto-signals-server` → **"Associate"**
 
 > Gratis mientras la instancia esté corriendo. Cobran ~$3.6/mes si la instancia está detenida.
-
-### Actualizar el código
-
-```bash
-# En el servidor
-cd ~/crypto-signals
-git pull                     # Si usás Git
-npm ci                       # Reinstalar dependencias
-npm run build                # Rebuild
-pm2 restart crypto-signals   # Reiniciar la app
-```
+> Si cambiás la IP, actualizá el secret `EC2_HOST` en GitHub.
 
 ### Ver cuánto espacio en disco queda
 
@@ -441,11 +419,18 @@ df -h
 ### Backup de las bases de datos
 
 ```bash
-# Desde tu Mac
+# Desde tu Mac — ambas bases de datos
 scp -i ~/.ssh/crypto-signals-key.pem \
-  ec2-user@TU_IP_PUBLICA:~/crypto-signals/src/mastra/public/mastra-reports.db \
+  ec2-user@TU_IP_PUBLICA:~/crypto-signals/mastra-reports.db \
   ./backup-reports-$(date +%Y%m%d).db
+
+scp -i ~/.ssh/crypto-signals-key.pem \
+  ec2-user@TU_IP_PUBLICA:~/crypto-signals/mastra.db \
+  ./backup-mastra-$(date +%Y%m%d).db
 ```
+
+> **mastra-reports.db**: Reportes HTML generados por los workflows
+> **mastra.db**: Memoria del agente (threads, mensajes, working memory, workflow runs)
 
 ### Costos estimados mensuales
 
@@ -456,6 +441,7 @@ scp -i ~/.ssh/crypto-signals-key.pem \
 | EBS Storage 20GB gp3 | ~$1.60/mes |
 | Elastic IP (si la usás) | $0 (activa) / $3.60 (inactiva) |
 | Data transfer (primeros 100GB/mes) | $0 |
+| GitHub Actions (2000 min/mes gratis) | $0 |
 | **Total estimado** | **$0 — $13/mes** |
 
 ### Detener para ahorrar (cuando no lo necesites)
@@ -471,7 +457,7 @@ pm2 save
 
 ---
 
-## 14. Troubleshooting
+## 12. Troubleshooting
 
 ### "Permission denied" al hacer SSH
 
@@ -482,8 +468,8 @@ chmod 400 ~/.ssh/crypto-signals-key.pem
 
 ### "Connection timed out" al hacer SSH
 
-- Verificá que el Security Group tenga la regla SSH (puerto 22) con **tu IP actual**
-- Tu IP pudo haber cambiado → actualizá la regla en Security Groups
+- Verificá que el Security Group tenga la regla SSH (puerto 22)
+- Verificá que la instancia esté en estado **Running**
 
 ### "Connection refused" al acceder al puerto 4111
 
@@ -503,22 +489,20 @@ chmod 400 ~/.ssh/crypto-signals-key.pem
   echo '/swapfile swap swap defaults 0 0' | sudo tee -a /etc/fstab
   ```
 
-### "npm run build" falla por memoria
+### GitHub Actions falla en el deploy
 
-```bash
-export NODE_OPTIONS="--max-old-space-size=768"
-npm run build
-```
+- Verificá los logs en **GitHub → Actions → click en el run fallido**
+- Si falla en SSH: verificá que el secret `EC2_SSH_KEY` contenga el .pem completo (incluyendo `-----BEGIN` y `-----END`)
+- Si falla el health check: conectate por SSH y revisá `pm2 logs crypto-signals`
 
-### No puedo ver los reportes
+### Las bases de datos están vacías después del deploy
 
-- Verificá la URL: `http://` (no `https://`)
-- Verificá que usás la IP pública, no la privada
-- Probá: `curl http://localhost:4111/reports` desde dentro del servidor (SSH)
+- Las DBs (`mastra.db`, `mastra-reports.db`) están excluidas del rsync — no deberían borrarse
+- Si ocurre, verificá que PM2 use `--cwd ~/crypto-signals` (las DBs usan paths relativos al CWD)
 
 ---
 
-## Resumen de comandos clave
+## Resumen
 
 ```bash
 # Conectarte al servidor
@@ -530,15 +514,17 @@ pm2 logs crypto-signals
 # Reiniciar app
 pm2 restart crypto-signals
 
-# Actualizar código + reiniciar
-cd ~/crypto-signals && git pull && npm ci && npm run build && pm2 restart crypto-signals
-
 # Ver estado
 pm2 status
 ```
 
-## URLs finales
+### Deploy automático
+
+Cada push/merge a `main` ejecuta el workflow de GitHub Actions automáticamente.
+
+### URLs
 
 - **Reportes**: `http://TU_IP_PUBLICA:4111/reports`
-- **Studio**: `http://TU_IP_PUBLICA:4111`
+- **Workflows**: `http://TU_IP_PUBLICA:4111/workflows`
+- **Settings**: `http://TU_IP_PUBLICA:4111/settings`
 - **API**: `http://TU_IP_PUBLICA:4111/api/`

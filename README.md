@@ -18,7 +18,7 @@ Crypto Signals is a Mastra-based platform that provides AI-powered cryptocurrenc
 - **Settings UI** — Configure LLM provider, model, and API key from the browser
 - **9 LLM Providers** — Google, OpenAI, Anthropic, Groq, xAI, Mistral, DeepSeek, Perplexity, Cohere
 - **58+ Models** — From Gemini 2.5 Pro to Claude Opus 4.6 to GPT-4.1 and more
-- **HTTPS** — SSL via Let's Encrypt
+- **CI/CD** — GitHub Actions auto-deploy on merge to main
 
 ### Security
 
@@ -26,7 +26,6 @@ Crypto Signals is a Mastra-based platform that provides AI-powered cryptocurrenc
 - **Multi-user safe** — each workflow request sends config per-request via `AsyncLocalStorage` (no global state)
 - Each user configures their own provider, model, and API key independently
 - No `.env` fallback — users must configure their own API key via Settings
-- HTTPS enforced with HTTP→HTTPS redirect
 
 ---
 
@@ -127,14 +126,19 @@ See [API-GUIDE.md](API-GUIDE.md) for complete `curl` examples.
 
 ## Deployment
 
-Deployed on AWS EC2 with HTTPS. See [DEPLOY-AWS.md](DEPLOY-AWS.md) for the full guide.
+Deployed on AWS EC2 with **automatic CI/CD via GitHub Actions**.
 
-```bash
-# Build for production
-npm run build
+Every push/merge to `main` triggers: build → deploy → health check.
 
-# Deploy — see DEPLOY-AWS.md for full rsync + PM2 commands
-```
+See [DEPLOY-AWS.md](DEPLOY-AWS.md) for the full setup guide (EC2 + GitHub Actions).
+
+### Required GitHub Secrets
+
+| Secret | Value |
+|--------|-------|
+| `EC2_SSH_KEY` | Contents of your `.pem` key file |
+| `EC2_HOST` | EC2 public IP address |
+| `EC2_USER` | `ec2-user` |
 
 ---
 
@@ -148,7 +152,8 @@ npm run build
 | Database | LibSQL (reports + agent memory) |
 | Server | Hono (via Mastra) |
 | Hosting | AWS EC2 (t3.micro) |
-| `HTTPS` | Caddy + Let's Encrypt |
+| `HTTPS` | Caddy + Let's Encrypt (optional) |
+| CI/CD | GitHub Actions |
 | Process Manager | PM2 |
 
 ---

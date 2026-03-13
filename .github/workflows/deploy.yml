@@ -1,0 +1,70 @@
+name: Deploy to AWS EC2
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build for production
+        run: npm run build
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy build output to EC2
+        run: |
+          rsync -avz --delete \
+            --exclude='*.db' \
+            --exclude='*.db-shm' \
+            --exclude='*.db-wal' \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            .mastra/output/ \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:~/crypto-signals/
+
+      - name: Install deps & restart PM2
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
+          cd ~/crypto-signals
+          npm install --omit=dev
+          if pm2 describe crypto-signals > /dev/null 2>&1; then
+            pm2 restart crypto-signals
+          else
+            pm2 start index.mjs --name crypto-signals --cwd ~/crypto-signals
+            pm2 save
+          fi
+          ENDSSH
+
+      - name: Health check
+        run: |
+          sleep 5
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            http://${{ secrets.EC2_HOST }}:4111/reports || echo "000")
+          if [ "$STATUS" = "200" ]; then
+            echo "✅ Deploy successful — HTTP $STATUS"
+          else
+            echo "❌ Health check failed — HTTP $STATUS"
+            exit 1
+          fi
