@@ -28,6 +28,13 @@ export async function initReportsTable(): Promise<void> {
       model_label TEXT
     )
   `);
+
+  // Migration: add model_label column if the table was created before it existed
+  try {
+    await client.execute(`ALTER TABLE reports ADD COLUMN model_label TEXT`);
+  } catch {
+    // Column already exists – ignore the error
+  }
 }
 
 /** Save a report to the database. Returns the report ID. */
