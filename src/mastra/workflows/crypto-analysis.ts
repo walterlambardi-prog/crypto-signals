@@ -423,7 +423,20 @@ What story are ALL indicators telling together? Are they aligned or diverging? W
 ## ⚠️ Key Risks
 List the top 3 specific risks for this trade RIGHT NOW. What would invalidate this signal?
 
-## 💡 Pro Tip
+## � Whale & Smart Money Analysis
+Based on the data above, analyze how whales (large institutional holders) and bulls (smart money) are likely positioning RIGHT NOW. Use these specific data points as evidence:
+
+- **OBV Trend (${inputData.obvTrend ?? 'N/A'})**: Is the On-Balance Volume suggesting large-scale accumulation (whales buying quietly while price is flat) or distribution (whales selling into strength)?
+- **Volume Ratio (${inputData.volumeRatio ?? 'N/A'}x)**: Unusual volume (>1.5x) often signals institutional activity. Is smart money entering or exiting?
+- **Fear & Greed (${inputData.fearGreedIndex}/100 — ${inputData.fearGreedLabel})**: Whales historically accumulate during Extreme Fear and distribute during Extreme Greed. What phase are we in?
+${inputData.btcDominance !== null ? `- **BTC Dominance (${inputData.btcDominance}%)**: Are institutions rotating from altcoins to BTC (risk-off) or from BTC to alts (risk-on)?` : ''}
+${inputData.vwap !== null ? `- **Price vs VWAP ($${inputData.vwap})**: Institutions use VWAP as fair value. Price ${inputData.currentPrice > inputData.vwap ? 'above' : 'below'} VWAP suggests whales see the current price as ${inputData.currentPrice > inputData.vwap ? 'expensive (may sell)' : 'cheap (may accumulate)'}.` : ''}
+${inputData.adx !== null ? `- **ADX (${inputData.adx}) + Volume**: High ADX with high volume = whales pushing the trend. Low ADX = accumulation/distribution range.` : ''}
+- **Support ($${inputData.supportLevel}) & Resistance ($${inputData.resistanceLevel})**: Whales place large buy/sell walls at key levels. Are we approaching a whale wall?
+
+Conclude with: What is the **most likely whale play** right now? Accumulation, distribution, or holding? What should retail traders do based on smart money behavior?
+
+## �💡 Pro Tip
 One unique, actionable insight that most traders would miss about this coin right now.
 
 Be SPECIFIC with numbers. No vague language. Take a clear directional position.
